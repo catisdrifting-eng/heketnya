@@ -1,6 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
+import { LogoutButton } from '@/components/logout-button';
 
 export default async function MainLayout({
   children,
@@ -23,9 +24,10 @@ export default async function MainLayout({
         <span className="text-sm font-semibold tracking-tight text-gray-900">
           HEKETNYA
         </span>
-        <span className="text-xs text-gray-400">
-          {user.email}
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="text-xs text-gray-400">{user.email}</span>
+          <LogoutButton />
+        </div>
       </header>
 
       {/* 메인 콘텐츠 */}
