@@ -318,6 +318,13 @@ export default function NewProjectPage() {
 
       const projectId = project.id as string;
 
+      // ── 2-1. 개설자를 project_members에 자동 추가 ────────────────────────
+      await supabase.from('project_members').insert({
+        project_id: projectId,
+        user_id: user.id,
+        role_preference: null,
+      });
+
       // ── 3. AI 로드맵 생성 API 호출 ───────────────────────────────────────
       const res = await fetch('/api/ai/generate-roadmap', {
         method: 'POST',
