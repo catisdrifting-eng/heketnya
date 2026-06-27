@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { Button } from '@/components/ui/button';
 
 interface ProjectInfo {
@@ -24,10 +25,9 @@ export default function JoinPage() {
 
   useEffect(() => {
     async function init() {
-      const supabase = createClient();
-
-      // 1. token으로 프로젝트 조회
-      const { data: proj } = await supabase
+      // 1. admin 클라이언트로 token → 프로젝트 조회 (RLS 우회)
+      const admin = createAdminClient();
+      const { data: proj } = await admin
         .from('projects')
         .select('id, name, deadline, team_size')
         .eq('invite_token', token)
@@ -42,7 +42,8 @@ export default function JoinPage() {
 
       setProject(proj);
 
-      // 2. 로그인 여부 확인
+      // 2. 로그인 여부 확인 (일반 클라이언트)
+      const supabase = createClient();
       const {
         data: { user },
       } = await supabase.auth.getUser();

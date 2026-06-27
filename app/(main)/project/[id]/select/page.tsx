@@ -62,6 +62,7 @@ export default function SelectPage() {
   const [assigneeNames, setAssigneeNames] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [unclaimingId, setUnclaimingId] = useState<string | null>(null);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   // ── 초기 데이터 로드 ──────────────────────────────────────────────────────
@@ -185,6 +186,39 @@ export default function SelectPage() {
     }
   }
 
+  // ── 태스크 선택 취소 ──────────────────────────────────────────────────────
+  async function handleUnclaim(taskId: string) {
+    if (!currentUserId || unclaimingId) return;
+    setUnclaimingId(taskId);
+
+    // 낙관적 업데이트
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, assignee_id: null } : t,
+      ),
+    );
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('tasks')
+        .update({ assignee_id: null, is_claimed: false, claimed_at: null })
+        .eq('id', taskId);
+
+      if (error) {
+        // 롤백
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === taskId ? { ...t, assignee_id: currentUserId } : t,
+          ),
+        );
+        setToast('선택 취소에 실패했어요.');
+      }
+    } finally {
+      setUnclaimingId(null);
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -261,11 +295,21 @@ export default function SelectPage() {
                   </div>
 
                   {/* 선택 버튼 */}
-                  <div className="shrink-0">
+                  <div className="shrink-0 flex flex-col gap-1.5 items-end">
                     {isMine ? (
-                      <span className="inline-flex items-center rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white">
-                        내가 선택함 ✓
-                      </span>
+                      <>
+                        <span className="inline-flex items-center rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white">
+                          내가 선택함 ✓
+                        </span>
+                        <button
+                          type="button"
+                          disabled={unclaimingId === task.id}
+                          onClick={() => handleUnclaim(task.id)}
+                          className="text-xs text-gray-400 hover:text-red-500 transition disabled:opacity-40"
+                        >
+                          {unclaimingId === task.id ? '취소 중...' : '선택 취소'}
+                        </button>
+                      </>
                     ) : isTaken ? (
                       <span className="inline-flex items-center rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-500">
                         {assigneeName}

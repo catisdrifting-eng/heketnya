@@ -344,10 +344,18 @@ export default function NewProjectPage() {
         return;
       }
 
-      const { tasks } = await res.json();
+      const { tasks, roles } = await res.json();
 
-      // ── 4. tasks를 sessionStorage에 저장 후 roadmap 페이지로 이동 ────────
+      // ── 4. tasks + roles를 sessionStorage에 저장 후 roadmap 페이지로 이동 ─
       sessionStorage.setItem(`roadmap-${projectId}`, JSON.stringify(tasks));
+      if (roles) {
+        sessionStorage.setItem(`roadmap-roles-${projectId}`, JSON.stringify(roles));
+      }
+      // 프로젝트 메타(deadline, team_size)도 저장 (채팅 수정용)
+      sessionStorage.setItem(
+        `roadmap-meta-${projectId}`,
+        JSON.stringify({ deadline: formData.deadline, team_size: Number(formData.teamSize) }),
+      );
       router.push(`/project/${projectId}/roadmap`);
     } finally {
       setIsSubmitting(false);

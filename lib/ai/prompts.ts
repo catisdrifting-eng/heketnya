@@ -30,9 +30,14 @@ export function generateRoadmapPrompt({
           : customType || '기타 프로젝트';
 
   const system =
-    'You are a project management expert. Respond ONLY with valid JSON. No markdown, no code blocks, no explanations.';
+    'You are a project management expert. Respond ONLY with valid JSON. No markdown, no code blocks, no explanations. roles must reflect the project type.';
 
-  const user = `You are helping a team plan their project. Based on the information below, generate a list of actionable tasks.
+  const today = new Date().toISOString().split('T')[0];
+
+  const user = `오늘 날짜: ${today}
+모든 태스크 dueDate는 오늘 이후여야 함.
+
+You are helping a team plan their project. Based on the information below, generate a list of actionable tasks.
 
 Project Information:
 - Type: ${projectTypeLabel}
@@ -53,6 +58,9 @@ Respond with this exact JSON structure:
       "suggestedRole": "research|writing|presentation|coding|any",
       "sortOrder": number
     }
+  ],
+  "roles": [
+    { "id": "string (영문 snake_case)", "label": "한국어 역할명" }
   ]
 }
 
@@ -61,6 +69,9 @@ Rules:
 - suggestedRole must be one of: research, writing, presentation, coding, any
 - sortOrder starts at 1 and increments by 1
 - Generate between 5 and 15 tasks depending on project complexity
+- roles must be 3 to 6 items, tailored to the project type (e.g. thesis → 데이터분석, 논문작성, 발표준비, 실험설계 / capstone → 프론트엔드, 백엔드, 기획디자인, QA)
+- roles[].id must be unique English snake_case strings
+- roles[].label must be Korean
 - Respond with JSON only, no other text`;
 
   return { system, user };
@@ -112,7 +123,12 @@ export function chatModifyPrompt({
   const system =
     'You are a task list editor. Respond ONLY with valid JSON. No markdown, no code blocks, no explanations.';
 
-  const user = `You are helping a team edit their project task list based on a user request.
+  const today = new Date().toISOString().split('T')[0];
+
+  const user = `오늘 날짜: ${today}
+모든 태스크 dueDate는 오늘 이후여야 함.
+
+You are helping a team edit their project task list based on a user request.
 
 Current Task List:
 ${JSON.stringify(currentTasks, null, 2)}

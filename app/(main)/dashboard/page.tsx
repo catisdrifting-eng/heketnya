@@ -49,7 +49,7 @@ function ProjectCard({ id, name, status, deadline, description }: ProjectCardPro
 
       {/* 설명 */}
       {description && (
-        <p className="text-xs text-gray-400 leading-relaxed line-clamp-2">
+        <p className="text-xs text-gray-400 leading-relaxed line-clamp-2 overflow-hidden">
           {description}
         </p>
       )}

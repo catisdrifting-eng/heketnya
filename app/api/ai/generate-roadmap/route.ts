@@ -107,9 +107,11 @@ export async function POST(request: NextRequest) {
       .replace(/\s*```$/, '')
       .trim();
 
-    const parsed = JSON.parse(cleaned) as { tasks: unknown[] };
+    const parsed = JSON.parse(cleaned);
+    const tasks = parsed.tasks;
+    const roles = parsed.roles ?? [];
 
-    return NextResponse.json({ tasks: parsed.tasks }, { status: 200 });
+    return NextResponse.json({ tasks, roles }, { status: 200 });
   } catch {
     return NextResponse.json(
       { error: 'AI 응답 파싱에 실패했어요.' },

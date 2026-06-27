@@ -228,7 +228,22 @@ export default function RoadmapPage() {
         return;
       }
 
-      // c. sessionStorage 정리
+      // c. custom_roles 저장
+      const rolesRaw = sessionStorage.getItem(`roadmap-roles-${id}`);
+      if (rolesRaw) {
+        try {
+          const roles = JSON.parse(rolesRaw);
+          await supabase
+            .from('projects')
+            .update({ custom_roles: roles })
+            .eq('id', id);
+        } catch {
+          // 파싱 실패 시 무시
+        }
+        sessionStorage.removeItem(`roadmap-roles-${id}`);
+      }
+
+      // d. sessionStorage 정리
       sessionStorage.removeItem(`roadmap-${id}`);
 
       // d. 초대 페이지로 이동
