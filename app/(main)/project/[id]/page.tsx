@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button';
+import AssignButton from '@/components/assign-button';
 import type { ProjectStatus } from '@/types';
 
 interface Props {
@@ -77,10 +78,15 @@ export default async function ProjectPage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
 
+  // 현재 유저 조회
+  const {
+    data: { user: currentUser },
+  } = await supabase.auth.getUser();
+
   // 프로젝트 조회
   const { data: project } = await supabase
     .from('projects')
-    .select('id, name, status, deadline, description, type')
+    .select('id, name, status, deadline, description, type, owner_id')
     .eq('id', id)
     .single();
 
@@ -95,6 +101,7 @@ export default async function ProjectPage({ params }: Props) {
     .eq('project_id', id);
 
   const status = project.status as ProjectStatus;
+  const isOwner = currentUser?.id === project.owner_id;
 
   return (
     <div className="flex flex-col gap-8">
@@ -131,6 +138,21 @@ export default async function ProjectPage({ params }: Props) {
 
       {/* 상태별 안내 배너 */}
       <StatusBanner status={status} projectId={id} />
+
+      {/* AI 배정 버튼 — 개설자 + selecting 상태일 때만 표시 */}
+      {isOwner && status === 'selecting' && (
+        <div className="flex flex-col gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4">
+          <div>
+            <p className="text-sm font-medium text-indigo-800">미배정 태스크를 AI가 자동으로 배정해드려요</p>
+            <p className="text-xs text-indigo-600 mt-0.5">
+              팀원의 역할 선호도와 부하를 고려해 최적으로 배정하고 프로젝트를 시작합니다.
+            </p>
+          </div>
+          <div className="mt-2">
+            <AssignButton projectId={id} />
+          </div>
+        </div>
+      )}
 
       {/* 팀원 목록 */}
       <section className="flex flex-col gap-4">

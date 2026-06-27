@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
   if (code) {
     const supabase = await createClient();
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
 
           // 쿠키 삭제 후 role 페이지로 redirect
           const redirectResponse = NextResponse.redirect(
-            `${origin}/project/${project.id}/role`,
+            `${appUrl}/project/${project.id}/role`,
           );
           redirectResponse.cookies.delete('invite_token');
           return redirectResponse;
@@ -51,10 +52,10 @@ export async function GET(request: NextRequest) {
       }
 
       // invite_token 없으면 기존대로 /dashboard로 이동
-      return NextResponse.redirect(`${origin}/dashboard`);
+      return NextResponse.redirect(`${appUrl}/dashboard`);
     }
   }
 
   // 실패 시 /login?error=auth_failed 로 redirect
-  return NextResponse.redirect(`${origin}/login?error=auth_failed`);
+  return NextResponse.redirect(`${appUrl}/login?error=auth_failed`);
 }

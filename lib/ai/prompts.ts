@@ -1,4 +1,4 @@
-import type { ProjectType } from '@/types';
+import type { ProjectType, RolePreference } from '@/types';
 
 interface RoadmapPromptParams {
   type: ProjectType;
@@ -62,6 +62,61 @@ Rules:
 - sortOrder starts at 1 and increments by 1
 - Generate between 5 and 15 tasks depending on project complexity
 - Respond with JSON only, no other text`;
+
+  return { system, user };
+}
+
+// ─── AI 태스크 배정 프롬프트 ───────────────────────────────────────────────
+
+interface UnclaimedTask {
+  id: string;
+  title: string;
+  suggestedRole: RolePreference;
+}
+
+interface MemberForAssignment {
+  userId: string;
+  name: string;
+  rolePreference: RolePreference;
+  claimedCount: number;
+}
+
+interface AssignTasksPromptParams {
+  unclaimedTasks: UnclaimedTask[];
+  members: MemberForAssignment[];
+}
+
+export function assignTasksPrompt({
+  unclaimedTasks,
+  members,
+}: AssignTasksPromptParams): RoadmapPromptResult {
+  const system =
+    'You are a task assignment optimizer. Respond ONLY with valid JSON. No markdown, no code blocks, no explanations.';
+
+  const user = `You need to assign the following unclaimed tasks to team members.
+
+Unclaimed Tasks:
+${JSON.stringify(unclaimedTasks, null, 2)}
+
+Team Members:
+${JSON.stringify(members, null, 2)}
+
+Assignment Rules:
+1. Prefer matching task suggestedRole with member rolePreference.
+2. Prioritize members with fewer claimedCount to balance workload.
+3. Members with rolePreference "any" should receive remaining tasks after role-matched assignments.
+4. Every task must be assigned to exactly one member.
+5. reason and summary must be written in Korean.
+
+Respond with this exact JSON structure:
+{
+  "assignments": [
+    { "taskId": "uuid", "assigneeId": "uuid", "reason": "한국어 이유" }
+  ],
+  "summary": "전체 배정 요약 한국어"
+}
+
+Respond with JSON only, no other text.`;
 
   return { system, user };
 }
