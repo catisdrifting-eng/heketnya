@@ -126,6 +126,7 @@ export default function RoadmapPage() {
 
   const [tasks, setTasks] = useState<RoadmapTask[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [projectMeta, setProjectMeta] = useState<{ deadline: string; team_size: number } | null>(null);
 
   // 채팅
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -133,7 +134,7 @@ export default function RoadmapPage() {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // ── sessionStorage에서 tasks 로드 ────────────────────────────────────────
+  // ── sessionStorage에서 tasks + 프로젝트 메타 로드 ────────────────────────
   useEffect(() => {
     const raw = sessionStorage.getItem(`roadmap-${id}`);
     if (!raw) return;
@@ -148,6 +149,16 @@ export default function RoadmapPage() {
       );
     } catch {
       // 파싱 실패 시 무시
+    }
+
+    // 프로젝트 메타 로드 (deadline, team_size)
+    const metaRaw = sessionStorage.getItem(`roadmap-meta-${id}`);
+    if (metaRaw) {
+      try {
+        setProjectMeta(JSON.parse(metaRaw));
+      } catch {
+        // 무시
+      }
     }
   }, [id]);
 
@@ -237,14 +248,49 @@ export default function RoadmapPage() {
     setIsChatLoading(true);
 
     try {
-      // TODO: POST /api/ai/chat-modify 구현 후 연결
-      // const res = await fetch('/api/ai/chat-modify', { ... });
+      const res = await fetch('/api/ai/chat-modify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: id,
+          currentTasks: tasks.map((t) => ({
+            title: t.title,
+            description: t.description,
+            dueDate: t.dueDate,
+            suggestedRole: t.suggestedRole,
+            sortOrder: t.sortOrder,
+          })),
+          userMessage: message,
+          deadline: projectMeta?.deadline ?? '',
+          teamSize: projectMeta?.team_size ?? 1,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setChatMessages((prev) => [
+          ...prev,
+          { role: 'assistant', content: data.error ?? '수정에 실패했어요.' },
+        ]);
+        return;
+      }
+
+      // 태스크 목록 업데이트 (임시 id 재부여)
+      const updatedTasks = (data.tasks as Omit<RoadmapTask, 'id'>[]).map(
+        (t, i) => ({ ...t, id: `task-${i}-${Date.now()}` }),
+      );
+      setTasks(updatedTasks);
+
+      // AI 답변 메시지 추가
       setChatMessages((prev) => [
         ...prev,
-        {
-          role: 'assistant',
-          content: '채팅 수정 기능은 곧 지원될 예정이에요. 직접 카드를 수정해주세요.',
-        },
+        { role: 'assistant', content: data.summary ?? '태스크를 수정했어요.' },
+      ]);
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: '수정에 실패했어요. 다시 시도해주세요.' },
       ]);
     } finally {
       setIsChatLoading(false);

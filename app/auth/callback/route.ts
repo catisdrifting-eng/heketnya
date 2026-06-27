@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
@@ -14,10 +15,11 @@ export async function GET(request: NextRequest) {
       const user = data.user;
 
       // ── invite_token 쿠키 처리 ──────────────────────────────────────────
-      const inviteToken = request.cookies.get('invite_token')?.value;
+      const cookieStore = await cookies();
+      const inviteToken = cookieStore.get('invite_token')?.value;
 
       if (inviteToken) {
-        // invite_token으로 project_id 찾기
+        // invite_token으로 project 조회
         const { data: project } = await supabase
           .from('projects')
           .select('id')
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
           .single();
 
         if (project) {
-          // 이미 멤버인지 확인
+          // 이미 멤버인지 확인 (중복 방지)
           const { data: existing } = await supabase
             .from('project_members')
             .select('id')
@@ -42,16 +44,19 @@ export async function GET(request: NextRequest) {
             });
           }
 
-          // 쿠키 삭제 후 role 페이지로 redirect
+          // invite_token 쿠키 삭제 후 role 페이지로 redirect
           const redirectResponse = NextResponse.redirect(
             `${appUrl}/project/${project.id}/role`,
           );
-          redirectResponse.cookies.delete('invite_token');
+          redirectResponse.cookies.set('invite_token', '', {
+            maxAge: 0,
+            path: '/',
+          });
           return redirectResponse;
         }
       }
 
-      // invite_token 없으면 기존대로 /dashboard로 이동
+      // invite_token 없으면 /dashboard로 이동
       return NextResponse.redirect(`${appUrl}/dashboard`);
     }
   }

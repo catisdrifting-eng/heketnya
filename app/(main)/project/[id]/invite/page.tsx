@@ -54,6 +54,9 @@ export default async function InvitePage({ params }: Props) {
             <Link href={`/project/${id}`}>프로젝트 홈으로</Link>
           </Button>
           <Button asChild size="lg" variant="outline" className="w-full">
+            <Link href={`/project/${id}/select`}>내 태스크 선택하기 →</Link>
+          </Button>
+          <Button asChild size="lg" variant="outline" className="w-full">
             <Link href="/dashboard">대시보드로 이동</Link>
           </Button>
         </div>

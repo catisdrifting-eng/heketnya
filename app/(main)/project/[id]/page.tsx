@@ -44,9 +44,14 @@ function StatusBanner({ status, projectId }: { status: ProjectStatus; projectId:
 
   if (status === 'selecting') {
     return (
-      <div className="rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
-        <p className="text-sm font-medium text-blue-800">팀원들이 태스크를 선택 중이에요</p>
-        <p className="text-xs text-blue-600 mt-0.5">모든 팀원이 역할을 선택하면 프로젝트가 시작됩니다.</p>
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
+        <div>
+          <p className="text-sm font-medium text-blue-800">팀원들이 태스크를 선택 중이에요</p>
+          <p className="text-xs text-blue-600 mt-0.5">모든 팀원이 역할을 선택하면 프로젝트가 시작됩니다.</p>
+        </div>
+        <Button asChild size="sm" className="shrink-0">
+          <Link href={`/project/${projectId}/select`}>내 태스크 선택하기</Link>
+        </Button>
       </div>
     );
   }
@@ -97,7 +102,10 @@ export default async function ProjectPage({ params }: Props) {
   // 팀원 목록 조회 (users 조인)
   const { data: members } = await supabase
     .from('project_members')
-    .select('*, user:users(name, email, avatar_url)')
+    .select(`
+      *,
+      user:users(id, name, email, avatar_url)
+    `)
     .eq('project_id', id);
 
   const status = project.status as ProjectStatus;
@@ -183,7 +191,7 @@ export default async function ProjectPage({ params }: Props) {
 
                   <div className="flex flex-col min-w-0">
                     <span className="text-sm font-medium text-gray-900 truncate">
-                      {user?.name ?? user?.email ?? '알 수 없음'}
+                      {user?.name ?? user?.email ?? member.user_id?.slice(0, 8) ?? '알 수 없음'}
                     </span>
                     {member.role && (
                       <span className="text-xs text-gray-400">{member.role}</span>

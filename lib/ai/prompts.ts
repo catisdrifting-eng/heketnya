@@ -86,6 +86,72 @@ interface AssignTasksPromptParams {
   members: MemberForAssignment[];
 }
 
+// ─── AI 채팅 수정 프롬프트 ────────────────────────────────────────────────
+
+interface ChatModifyTask {
+  title: string;
+  description: string | null;
+  dueDate: string;
+  suggestedRole: RolePreference;
+  sortOrder: number;
+}
+
+interface ChatModifyPromptParams {
+  currentTasks: ChatModifyTask[];
+  userMessage: string;
+  deadline: string;
+  teamSize: number;
+}
+
+export function chatModifyPrompt({
+  currentTasks,
+  userMessage,
+  deadline,
+  teamSize,
+}: ChatModifyPromptParams): RoadmapPromptResult {
+  const system =
+    'You are a task list editor. Respond ONLY with valid JSON. No markdown, no code blocks, no explanations.';
+
+  const user = `You are helping a team edit their project task list based on a user request.
+
+Current Task List:
+${JSON.stringify(currentTasks, null, 2)}
+
+Project Context:
+- Deadline: ${deadline}
+- Team size: ${teamSize} people
+
+User Request:
+"${userMessage}"
+
+Apply the user's request to the task list. You may add, remove, split, merge, or modify tasks as needed.
+
+Rules:
+- dueDate must be on or before ${deadline} (format: YYYY-MM-DD)
+- suggestedRole must be one of: research, writing, presentation, coding, any
+- sortOrder starts at 1 and increments by 1
+- summary must be written in Korean (one sentence describing what changed)
+- Return the COMPLETE updated task list, not just the changed tasks
+
+Respond with this exact JSON structure:
+{
+  "tasks": [
+    {
+      "title": "string",
+      "description": "string or null",
+      "dueDate": "YYYY-MM-DD",
+      "suggestedRole": "research|writing|presentation|coding|any",
+      "sortOrder": number
+    }
+  ],
+  "summary": "변경 내용 한 줄 요약"
+}
+
+Respond with JSON only, no other text.`;
+
+  return { system, user };
+}
+
 export function assignTasksPrompt({
   unclaimedTasks,
   members,
