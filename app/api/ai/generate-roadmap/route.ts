@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: process.env.AI_MODEL ?? 'claude-3-5-haiku-20241022',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: userPrompt }],
     });

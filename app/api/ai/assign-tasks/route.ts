@@ -1,8 +1,7 @@
-import { NextResponse, type NextRequest } from 'next/server';
+ import { NextResponse, type NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { assignTasksPrompt } from '@/lib/ai/prompts';
-import type { RolePreference } from '@/types';
 
 interface RequestBody {
   projectId: string;
@@ -59,7 +58,7 @@ export async function POST(request: NextRequest) {
   // ── 4. 프로젝트 상태 확인 ─────────────────────────────────────────────────
   if (project.status !== 'selecting') {
     return NextResponse.json(
-      { error: "태스크 선택 단계(selecting)인 프로젝트에서만 AI 배정을 실행할 수 있습니다." },
+      { error: '태스크 선택 단계(selecting)인 프로젝트에서만 AI 배정을 실행할 수 있습니다.' },
       { status: 400 },
     );
   }
@@ -67,28 +66,29 @@ export async function POST(request: NextRequest) {
   // ── 5. 미배정 태스크 조회 ─────────────────────────────────────────────────
   const { data: unclaimedTasksRaw } = await supabase
     .from('tasks')
-    .select('id, title, suggested_role')
+    .select('id, title, suggested_role, due_date')
     .eq('project_id', projectId)
     .is('assignee_id', null);
 
-  // ── 6. 팀원 조회 (역할 + 기존 배정 수) ───────────────────────────────────
+  // ── 6. 팀원 조회 ──────────────────────────────────────────────────────────
   const { data: membersRaw } = await supabase
     .from('project_members')
     .select('user_id, role_preference, users(id, name, email)')
     .eq('project_id', projectId);
 
-  // 각 팀원의 기존 배정 태스크 수 계산
+  // 각 팀원이 이미 맡은 태스크 제목 목록 계산
   const { data: assignedTasksRaw } = await supabase
     .from('tasks')
-    .select('assignee_id')
+    .select('assignee_id, title')
     .eq('project_id', projectId)
     .not('assignee_id', 'is', null);
 
-  const claimedCountMap: Record<string, number> = {};
+  const memberTasksMap: Record<string, string[]> = {};
   if (assignedTasksRaw) {
     for (const t of assignedTasksRaw) {
       if (t.assignee_id) {
-        claimedCountMap[t.assignee_id] = (claimedCountMap[t.assignee_id] ?? 0) + 1;
+        if (!memberTasksMap[t.assignee_id]) memberTasksMap[t.assignee_id] = [];
+        memberTasksMap[t.assignee_id].push(t.title);
       }
     }
   }
@@ -98,8 +98,8 @@ export async function POST(request: NextRequest) {
     return {
       userId: m.user_id,
       name: u?.name ?? u?.email ?? '알 수 없음',
-      rolePreference: (m.role_preference ?? 'any') as RolePreference,
-      claimedCount: claimedCountMap[m.user_id] ?? 0,
+      rolePreference: m.role_preference ?? 'any',
+      currentTasks: memberTasksMap[m.user_id] ?? [],
     };
   });
 
@@ -119,7 +119,8 @@ export async function POST(request: NextRequest) {
   const unclaimedTasks = unclaimedTasksRaw.map((t: any) => ({
     id: t.id,
     title: t.title,
-    suggestedRole: (t.suggested_role ?? 'any') as RolePreference,
+    suggestedRole: t.suggested_role ?? 'any',
+    dueDate: t.due_date,
   }));
 
   // ── 8. 팀원이 없으면 배정 불가 ───────────────────────────────────────────
@@ -146,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: process.env.AI_MODEL ?? 'claude-3-5-haiku-20241022',
-      max_tokens: 2000,
+      max_tokens: 4000,
       system,
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -156,7 +157,8 @@ export async function POST(request: NextRequest) {
       throw new Error('Unexpected response type from AI');
     }
     rawText = content.text;
-  } catch {
+  } catch (error) {
+    console.error('=== ASSIGN ERROR ===', error);
     return NextResponse.json(
       { error: 'AI 호출에 실패했어요.' },
       { status: 500 },
@@ -179,6 +181,7 @@ export async function POST(request: NextRequest) {
     assignments = parsed.assignments;
     summary = parsed.summary;
   } catch {
+    console.error('=== ASSIGN RAW ===', rawText);
     return NextResponse.json(
       { error: 'AI 응답 파싱에 실패했어요.' },
       { status: 500 },

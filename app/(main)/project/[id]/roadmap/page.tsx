@@ -4,16 +4,21 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
-import type { RolePreference } from '@/types';
+import { getRoleLabel, getRoleColor } from '@/lib/roles';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
+
+interface Role {
+  id: string;
+  label: string;
+}
 
 interface RoadmapTask {
   id: string; // 클라이언트 임시 ID
   title: string;
   description: string | null;
   dueDate: string;
-  suggestedRole: RolePreference;
+  suggestedRole: string;
   sortOrder: number;
 }
 
@@ -22,40 +27,16 @@ interface ChatMessage {
   content: string;
 }
 
-// ─── 역할 배지 색상 ────────────────────────────────────────────────────────
-
-const ROLE_COLORS: Record<RolePreference, string> = {
-  research: 'bg-blue-100 text-blue-700',
-  writing: 'bg-purple-100 text-purple-700',
-  presentation: 'bg-orange-100 text-orange-700',
-  coding: 'bg-green-100 text-green-700',
-  any: 'bg-gray-100 text-gray-600',
-};
-
-const ROLE_LABELS: Record<RolePreference, string> = {
-  research: '리서치',
-  writing: '작성',
-  presentation: '발표',
-  coding: '개발',
-  any: '공통',
-};
-
-const ROLE_OPTIONS: RolePreference[] = [
-  'research',
-  'writing',
-  'presentation',
-  'coding',
-  'any',
-];
-
 // ─── 태스크 카드 ───────────────────────────────────────────────────────────
 
 function TaskCard({
   task,
+  roles,
   onChange,
   onDelete,
 }: {
   task: RoadmapTask;
+  roles: Role[];
   onChange: (patch: Partial<RoadmapTask>) => void;
   onDelete: () => void;
 }) {
@@ -102,14 +83,12 @@ function TaskCard({
 
         <select
           value={task.suggestedRole}
-          onChange={(e) =>
-            onChange({ suggestedRole: e.target.value as RolePreference })
-          }
-          className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 outline-none cursor-pointer ${ROLE_COLORS[task.suggestedRole]}`}
+          onChange={(e) => onChange({ suggestedRole: e.target.value })}
+          className={`text-xs font-medium rounded-full px-2.5 py-1 border-0 outline-none cursor-pointer ${getRoleColor(task.suggestedRole)}`}
         >
-          {ROLE_OPTIONS.map((role) => (
-            <option key={role} value={role}>
-              {ROLE_LABELS[role]}
+          {roles.map((role) => (
+            <option key={role.id} value={role.id}>
+              {role.label}
             </option>
           ))}
         </select>
@@ -125,8 +104,8 @@ export default function RoadmapPage() {
   const router = useRouter();
 
   const [tasks, setTasks] = useState<RoadmapTask[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
-  const [projectMeta, setProjectMeta] = useState<{ deadline: string; team_size: number } | null>(null);
 
   // 채팅
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -151,11 +130,11 @@ export default function RoadmapPage() {
       // 파싱 실패 시 무시
     }
 
-    // 프로젝트 메타 로드 (deadline, team_size)
-    const metaRaw = sessionStorage.getItem(`roadmap-meta-${id}`);
-    if (metaRaw) {
+    // roles 로드 (sessionStorage)
+    const rolesRaw = sessionStorage.getItem(`roadmap-roles-${id}`);
+    if (rolesRaw) {
       try {
-        setProjectMeta(JSON.parse(metaRaw));
+        setRoles(JSON.parse(rolesRaw));
       } catch {
         // 무시
       }
@@ -276,8 +255,6 @@ export default function RoadmapPage() {
             sortOrder: t.sortOrder,
           })),
           userMessage: message,
-          deadline: projectMeta?.deadline ?? '',
-          teamSize: projectMeta?.team_size ?? 1,
         }),
       });
 
@@ -337,6 +314,7 @@ export default function RoadmapPage() {
               <TaskCard
                 key={task.id}
                 task={task}
+                roles={roles}
                 onChange={(patch) => updateTask(task.id, patch)}
                 onDelete={() => deleteTask(task.id)}
               />

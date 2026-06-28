@@ -3,9 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { getRoleLabel, getRoleColor } from '@/lib/roles';
 import type { TaskStatus } from '@/types';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
+
+interface Role {
+  id: string;
+  label: string;
+}
 
 interface DashboardTask {
   id: string;
@@ -13,6 +19,7 @@ interface DashboardTask {
   status: TaskStatus;
   assignee_id: string | null;
   due_date: string | null;
+  suggested_role: string | null;
 }
 
 interface TeamMember {
@@ -92,6 +99,7 @@ export default function ProjectDashboardPage() {
   const { id } = useParams<{ id: string }>();
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // ── 초기 데이터 로드 ──────────────────────────────────────────────────────
@@ -99,19 +107,27 @@ export default function ProjectDashboardPage() {
     async function load() {
       const supabase = createClient();
 
-      const [tasksRes, membersRes] = await Promise.all([
+      const [tasksRes, membersRes, projectRes] = await Promise.all([
         supabase
           .from('tasks')
-          .select('id, title, status, assignee_id, due_date')
+          .select('id, title, status, assignee_id, due_date, suggested_role')
           .eq('project_id', id)
           .order('sort_order', { ascending: true }),
         supabase
           .from('project_members')
           .select('user_id, users(id, name, email, avatar_url)')
           .eq('project_id', id),
+        supabase
+          .from('projects')
+          .select('custom_roles')
+          .eq('id', id)
+          .single(),
       ]);
 
       if (tasksRes.data) setTasks(tasksRes.data as DashboardTask[]);
+      if (projectRes.data?.custom_roles) {
+        setRoles(projectRes.data.custom_roles as Role[]);
+      }
 
       if (membersRes.data) {
         const parsed: TeamMember[] = membersRes.data.map((row: any) => ({
@@ -337,6 +353,15 @@ export default function ProjectDashboardPage() {
                               month: 'short',
                               day: 'numeric',
                             })}
+                          </span>
+                        )}
+
+                        {/* 역할 배지 */}
+                        {task.suggested_role && (
+                          <span
+                            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${getRoleColor(task.suggested_role)}`}
+                          >
+                            {getRoleLabel(task.suggested_role, roles)}
                           </span>
                         )}
 

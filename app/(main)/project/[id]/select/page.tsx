@@ -4,37 +4,24 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import type { RolePreference } from '@/types';
+import { getRoleLabel, getRoleColor } from '@/lib/roles';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
+
+interface Role {
+  id: string;
+  label: string;
+}
 
 interface Task {
   id: string;
   title: string;
   description: string | null;
   due_date: string | null;
-  suggested_role: RolePreference;
+  suggested_role: string | null;
   assignee_id: string | null;
   sort_order: number;
 }
-
-// ─── 역할 배지 ─────────────────────────────────────────────────────────────
-
-const ROLE_COLORS: Record<RolePreference, string> = {
-  research: 'bg-blue-100 text-blue-700',
-  writing: 'bg-purple-100 text-purple-700',
-  presentation: 'bg-orange-100 text-orange-700',
-  coding: 'bg-green-100 text-green-700',
-  any: 'bg-gray-100 text-gray-600',
-};
-
-const ROLE_LABELS: Record<RolePreference, string> = {
-  research: '리서치',
-  writing: '작성',
-  presentation: '발표',
-  coding: '개발',
-  any: '공통',
-};
 
 // ─── 토스트 ────────────────────────────────────────────────────────────────
 
@@ -58,6 +45,7 @@ export default function SelectPage() {
   const router = useRouter();
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [assigneeNames, setAssigneeNames] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<string | null>(null);
@@ -76,16 +64,26 @@ export default function SelectPage() {
       } = await supabase.auth.getUser();
       if (user) setCurrentUserId(user.id);
 
-      // tasks 조회
-      const { data } = await supabase
-        .from('tasks')
-        .select('id, title, description, due_date, suggested_role, assignee_id, sort_order')
-        .eq('project_id', id)
-        .order('sort_order', { ascending: true });
+      // tasks + custom_roles 조회
+      const [tasksRes, projectRes] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id, title, description, due_date, suggested_role, assignee_id, sort_order')
+          .eq('project_id', id)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('projects')
+          .select('custom_roles')
+          .eq('id', id)
+          .single(),
+      ]);
 
-      if (data) {
-        setTasks(data as Task[]);
-        await loadAssigneeNames(data as Task[], supabase);
+      if (tasksRes.data) {
+        setTasks(tasksRes.data as Task[]);
+        await loadAssigneeNames(tasksRes.data as Task[], supabase);
+      }
+      if (projectRes.data?.custom_roles) {
+        setRoles(projectRes.data.custom_roles as Role[]);
       }
     }
 
@@ -270,11 +268,13 @@ export default function SelectPage() {
                       <span className="text-sm font-medium text-gray-900">
                         {task.title}
                       </span>
-                      <span
-                        className={`text-xs font-medium rounded-full px-2 py-0.5 ${ROLE_COLORS[task.suggested_role]}`}
-                      >
-                        {ROLE_LABELS[task.suggested_role]}
-                      </span>
+                      {task.suggested_role && (
+                        <span
+                          className={`text-xs font-medium rounded-full px-2 py-0.5 ${getRoleColor(task.suggested_role)}`}
+                        >
+                          {getRoleLabel(task.suggested_role, roles)}
+                        </span>
+                      )}
                     </div>
 
                     {task.description && (

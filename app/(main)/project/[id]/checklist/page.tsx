@@ -3,16 +3,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import type { TaskStatus, RolePreference } from '@/types';
+import { getRoleLabel, getRoleColor } from '@/lib/roles';
+import type { TaskStatus } from '@/types';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
+
+interface Role {
+  id: string;
+  label: string;
+}
 
 interface ChecklistTask {
   id: string;
   title: string;
   description: string | null;
   due_date: string | null;
-  suggested_role: RolePreference;
+  suggested_role: string | null;
   status: TaskStatus;
   memo: string | null;
 }
@@ -28,42 +34,23 @@ function nextStatus(current: TaskStatus): TaskStatus {
 
 // ─── 상태 배지 ─────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG: Record<
-  TaskStatus,
-  { label: string; className: string }
-> = {
+const STATUS_CONFIG: Record<TaskStatus, { label: string; className: string }> = {
   pending: { label: '대기중', className: 'bg-gray-100 text-gray-500' },
   in_progress: { label: '진행중', className: 'bg-blue-100 text-blue-700' },
   completed: { label: '완료', className: 'bg-green-100 text-green-700' },
-};
-
-// ─── 역할 배지 ─────────────────────────────────────────────────────────────
-
-const ROLE_COLORS: Record<RolePreference, string> = {
-  research: 'bg-blue-50 text-blue-600',
-  writing: 'bg-purple-50 text-purple-600',
-  presentation: 'bg-orange-50 text-orange-600',
-  coding: 'bg-green-50 text-green-600',
-  any: 'bg-gray-100 text-gray-500',
-};
-
-const ROLE_LABELS: Record<RolePreference, string> = {
-  research: '리서치',
-  writing: '작성',
-  presentation: '발표',
-  coding: '개발',
-  any: '공통',
 };
 
 // ─── 태스크 카드 ───────────────────────────────────────────────────────────
 
 function TaskCard({
   task,
+  roles,
   currentUserId,
   onStatusChange,
   onMemoChange,
 }: {
   task: ChecklistTask;
+  roles: Role[];
   currentUserId: string;
   onStatusChange: (id: string, newStatus: TaskStatus) => void;
   onMemoChange: (id: string, memo: string) => void;
@@ -88,11 +75,13 @@ function TaskCard({
             >
               {task.title}
             </span>
-            <span
-              className={`text-xs font-medium rounded-full px-2 py-0.5 ${ROLE_COLORS[task.suggested_role]}`}
-            >
-              {ROLE_LABELS[task.suggested_role]}
-            </span>
+            {task.suggested_role && (
+              <span
+                className={`text-xs font-medium rounded-full px-2 py-0.5 ${getRoleColor(task.suggested_role)}`}
+              >
+                {getRoleLabel(task.suggested_role, roles)}
+              </span>
+            )}
           </div>
 
           {task.description && (
@@ -139,6 +128,7 @@ function TaskCard({
 export default function ChecklistPage() {
   const { id } = useParams<{ id: string }>();
   const [tasks, setTasks] = useState<ChecklistTask[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
@@ -156,14 +146,24 @@ export default function ChecklistPage() {
       if (!user) return;
       setCurrentUserId(user.id);
 
-      const { data } = await supabase
-        .from('tasks')
-        .select('id, title, description, due_date, suggested_role, status, memo')
-        .eq('project_id', id)
-        .eq('assignee_id', user.id)
-        .order('sort_order', { ascending: true });
+      const [tasksRes, projectRes] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id, title, description, due_date, suggested_role, status, memo')
+          .eq('project_id', id)
+          .eq('assignee_id', user.id)
+          .order('sort_order', { ascending: true }),
+        supabase
+          .from('projects')
+          .select('custom_roles')
+          .eq('id', id)
+          .single(),
+      ]);
 
-      if (data) setTasks(data as ChecklistTask[]);
+      if (tasksRes.data) setTasks(tasksRes.data as ChecklistTask[]);
+      if (projectRes.data?.custom_roles) {
+        setRoles(projectRes.data.custom_roles as Role[]);
+      }
       setIsLoading(false);
     }
 
@@ -176,7 +176,6 @@ export default function ChecklistPage() {
       const prev = tasks.find((t) => t.id === taskId);
       if (!prev) return;
 
-      // 낙관적 업데이트
       setTasks((ts) =>
         ts.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
       );
@@ -188,7 +187,6 @@ export default function ChecklistPage() {
         .eq('id', taskId);
 
       if (error) {
-        // 실패 시 revert
         setTasks((ts) =>
           ts.map((t) => (t.id === taskId ? { ...t, status: prev.status } : t)),
         );
@@ -200,17 +198,14 @@ export default function ChecklistPage() {
   // ── 메모 변경 (500ms 디바운스 자동저장) ──────────────────────────────────
   const handleMemoChange = useCallback(
     (taskId: string, memo: string) => {
-      // 낙관적 업데이트
       setTasks((ts) =>
         ts.map((t) => (t.id === taskId ? { ...t, memo } : t)),
       );
 
-      // 기존 타이머 취소
       if (memoTimers.current[taskId]) {
         clearTimeout(memoTimers.current[taskId]);
       }
 
-      // 500ms 후 저장
       memoTimers.current[taskId] = setTimeout(async () => {
         const supabase = createClient();
         await supabase.from('tasks').update({ memo }).eq('id', taskId);
@@ -258,6 +253,7 @@ export default function ChecklistPage() {
             <TaskCard
               key={task.id}
               task={task}
+              roles={roles}
               currentUserId={currentUserId}
               onStatusChange={handleStatusChange}
               onMemoChange={handleMemoChange}

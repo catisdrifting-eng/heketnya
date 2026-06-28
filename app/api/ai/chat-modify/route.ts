@@ -2,13 +2,12 @@ import { NextResponse, type NextRequest } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { chatModifyPrompt } from '@/lib/ai/prompts';
-import type { RolePreference } from '@/types';
 
 interface RoadmapTask {
   title: string;
   description: string | null;
   dueDate: string;
-  suggestedRole: RolePreference;
+  suggestedRole: string;
   sortOrder: number;
 }
 
@@ -16,8 +15,6 @@ interface RequestBody {
   projectId: string;
   currentTasks: RoadmapTask[];
   userMessage: string;
-  deadline: string;
-  teamSize: number;
 }
 
 export async function POST(request: NextRequest) {
@@ -39,12 +36,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '잘못된 요청입니다.' }, { status: 400 });
   }
 
-  const { projectId, currentTasks, userMessage, deadline, teamSize } = body;
+  const { projectId, currentTasks, userMessage } = body;
 
   // ── 3. 프로젝트 조회 및 owner 확인 ───────────────────────────────────────
   const { data: project, error: projectError } = await supabase
     .from('projects')
-    .select('id, owner_id, status')
+    .select('id, owner_id, status, custom_roles, deadline, team_size')
     .eq('id', projectId)
     .single();
 
@@ -73,9 +70,10 @@ export async function POST(request: NextRequest) {
   // ── 5. 프롬프트 생성 ──────────────────────────────────────────────────────
   const { system, user: userPrompt } = chatModifyPrompt({
     currentTasks,
+    roles: (project.custom_roles as { id: string; label: string }[]) ?? [],
     userMessage,
-    deadline,
-    teamSize,
+    deadline: project.deadline ?? '',
+    teamSize: project.team_size ?? 1,
   });
 
   // ── 6. AI 호출 ────────────────────────────────────────────────────────────
