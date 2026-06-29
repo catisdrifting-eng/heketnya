@@ -199,12 +199,12 @@ ${JSON.stringify(members, null, 2)}
 # 출력 형식 (이 구조 그대로)
 {
   "assignments": [
-    { "taskId": "uuid", "assigneeId": "uuid", "reason": "이 사람에게 배정한 이유 한국어 한 문장" }
+    { "taskId": "uuid", "assigneeId": "uuid", "reason": "배정 이유 (한국어 40자 이내 한 문장)" }
   ],
   "summary": "전체 배정 결과를 2~3문장으로 요약 (누가 어떤 영역을 맡았는지)"
 }
 
-reason과 summary는 한국어로. JSON만 출력하세요.`;
+reason은 반드시 한국어 40자 이내 한 문장으로 짧게 쓰세요. summary는 한국어로. JSON만 출력하세요.`;
 
   return { system, user };
 }

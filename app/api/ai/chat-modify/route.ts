@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { chatModifyPrompt } from '@/lib/ai/prompts';
+import { callAI } from '@/lib/ai/client';
 
 interface RoadmapTask {
   title: string;
@@ -76,31 +76,12 @@ export async function POST(request: NextRequest) {
     teamSize: project.team_size ?? 1,
   });
 
-  // ── 6. AI 호출 ────────────────────────────────────────────────────────────
+  // ── 6. AI 호출 (Gemini 메인 + Groq 폴백) ──────────────────────────────────
   let rawText: string;
   try {
-    const anthropic = new Anthropic({
-      baseURL: process.env.AI_API_BASE_URL,
-      apiKey: process.env.AI_API_KEY,
-    });
-
-    const message = await anthropic.messages.create({
-      model: process.env.AI_MODEL ?? 'claude-3-5-haiku-20241022',
-      max_tokens: 4000,
-      system,
-      messages: [{ role: 'user', content: userPrompt }],
-    });
-
-    const content = message.content[0];
-    if (content.type !== 'text') {
-      throw new Error('Unexpected response type from AI');
-    }
-    rawText = content.text;
+    rawText = await callAI({ system, user: userPrompt, maxTokens: 8000 });
   } catch {
-    return NextResponse.json(
-      { error: 'AI 호출에 실패했어요.' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'AI 호출에 실패했어요.' }, { status: 500 });
   }
 
   // ── 7. JSON 파싱 ──────────────────────────────────────────────────────────
@@ -119,7 +100,9 @@ export async function POST(request: NextRequest) {
       { tasks: parsed.tasks, summary: parsed.summary },
       { status: 200 },
     );
-  } catch {
+  } catch (e) {
+    console.error('[파싱실패] 원본 응답:', rawText);
+    console.error('[파싱실패] 에러:', e);
     return NextResponse.json(
       { error: 'AI 응답 파싱에 실패했어요.' },
       { status: 500 },

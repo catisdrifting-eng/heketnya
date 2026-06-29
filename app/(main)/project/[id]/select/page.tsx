@@ -62,7 +62,26 @@ export default function SelectPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (user) setCurrentUserId(user.id);
+
+      if (!user) {
+        router.push('/login');
+        return;
+      }
+
+      // 역할 미선언 시 역할 선택 페이지로 리다이렉트
+      const { data: member } = await supabase
+        .from('project_members')
+        .select('role_preference')
+        .eq('project_id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (!member?.role_preference) {
+        router.replace(`/project/${id}/role`);
+        return;
+      }
+
+      setCurrentUserId(user.id);
 
       // tasks + custom_roles 조회
       const [tasksRes, projectRes] = await Promise.all([
