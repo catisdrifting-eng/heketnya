@@ -369,6 +369,15 @@ export default function RoadmapPage() {
                 </div>
               ))
             )}
+            {isChatLoading && (
+              <div className="flex justify-start">
+                <div className="rounded-xl bg-gray-100 px-3 py-2 text-xs text-gray-400 flex items-center gap-1">
+                  <span className="animate-bounce [animation-delay:0ms]">·</span>
+                  <span className="animate-bounce [animation-delay:150ms]">·</span>
+                  <span className="animate-bounce [animation-delay:300ms]">·</span>
+                </div>
+              </div>
+            )}
             <div ref={chatEndRef} />
           </div>
 

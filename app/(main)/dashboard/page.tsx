@@ -85,11 +85,15 @@ export default async function DashboardPage() {
     user?.email?.split('@')[0] ??
     '사용자';
 
-  // RLS가 현재 유저의 프로젝트만 필터링
-  const { data: projects } = await supabase
+  // RLS가 현재 유저의 프로젝트만 필터링 (태스크 0개인 미완성 프로젝트 제외)
+  const { data: rawProjects } = await supabase
     .from('projects')
-    .select('*')
+    .select('*, tasks(count)')
     .order('created_at', { ascending: false });
+
+  const projects = (rawProjects ?? []).filter(
+    (p) => (p.tasks as { count: number }[])?.[0]?.count > 0,
+  );
 
   return (
     <div className="flex flex-col gap-10">

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button';
 import AssignButton from '@/components/assign-button';
+import { CopyInviteLink } from '@/components/copy-invite-link';
 import type { ProjectStatus } from '@/types';
 
 interface Props {
@@ -91,7 +92,7 @@ export default async function ProjectPage({ params }: Props) {
   // 프로젝트 조회
   const { data: project } = await supabase
     .from('projects')
-    .select('id, name, status, deadline, description, type, owner_id')
+    .select('id, name, status, deadline, description, type, owner_id, invite_token')
     .eq('id', id)
     .single();
 
@@ -143,6 +144,16 @@ export default async function ProjectPage({ params }: Props) {
           </p>
         )}
       </div>
+
+      {/* 초대 링크 복사 — 개설자 + invite_token 있을 때만 표시 */}
+      {isOwner && project.invite_token && (
+        <div className="flex flex-col gap-1.5">
+          <p className="text-xs font-medium text-gray-600">초대 링크</p>
+          <CopyInviteLink
+            inviteLink={`${process.env.NEXT_PUBLIC_APP_URL}/join/${project.invite_token}`}
+          />
+        </div>
+      )}
 
       {/* 상태별 안내 배너 */}
       <StatusBanner status={status} projectId={id} />
