@@ -18,7 +18,6 @@ export default function ProjectLayout({
   const pathname = usePathname();
   const [hasUnread, setHasUnread] = useState(false);
 
-
   const chatHref = `/project/${id}/chat`;
   const isChatActive = pathname === chatHref;
 
@@ -52,8 +51,6 @@ export default function ProjectLayout({
     function subscribe() {
       if (cancelled) return;
 
-      console.log('[unread-debug] effect start, id =', id);
-
       channel = supabase
         .channel(`messages-unread-${id}`)
         .on(
@@ -65,15 +62,12 @@ export default function ProjectLayout({
             filter: `project_id=eq.${id}`,
           },
           (payload) => {
-            console.log('[unread-debug] INSERT event received', payload, 'isChatActive=', isChatActiveRef.current);
             if (!isChatActiveRef.current) {
               setHasUnread(true);
             }
           },
         )
         .subscribe((status) => {
-          console.log('[unread-debug] subscribe status =', status);
-
           if (
             !cancelled &&
             (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
@@ -94,13 +88,10 @@ export default function ProjectLayout({
 
     return () => {
       cancelled = true;
-      console.log('[unread-debug] effect cleanup, id =', id);
       if (retryTimer) clearTimeout(retryTimer);
       if (channel) supabase.removeChannel(channel);
     };
   }, [id]);
-
-
 
   return (
     <div className="flex flex-col gap-0">

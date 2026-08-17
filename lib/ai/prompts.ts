@@ -210,3 +210,62 @@ reason은 반드시 한국어 40자 이내 한 문장으로 짧게 쓰세요. su
 
   return { system, user };
 }
+
+// ─── Call 4: 주간 요약 ─────────────────────────────────────────────────────
+interface WeeklySummaryTask {
+  title: string;
+  status: 'pending' | 'in_progress' | 'completed';
+  dueDate: string | null;
+  assigneeName: string | null;
+}
+
+interface WeeklySummaryHistoryEntry {
+  taskTitle: string;
+  fromStatus: string;
+  toStatus: string;
+  createdAt: string;
+}
+
+interface WeeklySummaryPromptParams {
+  tasks: WeeklySummaryTask[];
+  statusHistory: WeeklySummaryHistoryEntry[];
+  deadline: string | null;
+}
+
+export function weeklySummaryPrompt({
+  tasks, statusHistory, deadline,
+}: WeeklySummaryPromptParams): RoadmapPromptResult {
+  const system = `당신은 팀 프로젝트의 진행 상황을 요약하는 냉정하고 신뢰할 수 있는 프로젝트 코디네이터입니다.
+반드시 팀 관점으로만 서술합니다. 개인의 성과를 평가하거나 팀원끼리 비교하지 않습니다.
+"누가 게으르다", "누가 잘한다" 같은 개인 평가성 표현은 절대 금지합니다. 대신 "설계 파트가 지연되고 있다", "발표 준비가 순조롭게 진행 중이다"처럼 작업/영역 단위로 서술합니다.
+반드시 유효한 JSON만 출력합니다. 마크다운, 코드블록, 설명 없이 JSON 객체만 반환합니다.`;
+
+  const user = `오늘 날짜: ${today()}
+${deadline ? `프로젝트 최종 마감일: ${deadline}` : '프로젝트 마감일: 미정'}
+
+# 현재 태스크 목록
+${JSON.stringify(tasks, null, 2)}
+
+# 최근 상태 변경 이력 (최신순)
+${JSON.stringify(statusHistory, null, 2)}
+
+# 작업
+위 정보를 바탕으로 이번 주 프로젝트 진행 상황을 팀 전체 관점에서 요약하세요.
+
+## 반드시 지킬 것
+- 팀 관점으로만 서술하세요. 특정 개인의 성과를 평가하거나 팀원을 비교하지 마세요.
+- "누가 게으르다/잘한다" 같은 개인 평가 표현 금지. "설계 파트가 지연되고 있다"처럼 작업 단위로 서술하세요.
+- 다음 내용을 순서대로 자연스럽게 포함하세요: (1) 이번 주 완료된 것, (2) 진행 중인 것, (3) 마감이 임박했거나 이미 지난 것, (4) 다음 주 우선순위 제안.
+- 전체 5~8문장 분량. 불릿 없이 자연스러운 문단으로 작성하세요.
+- 한국어로 작성하세요.
+
+# 출력 형식 (이 구조 그대로)
+{
+  "summary": "5~8문장의 자연스러운 한국어 문단"
+}
+
+JSON만 출력하세요.`;
+
+  return { system, user };
+}
+

@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
+import { WeeklySummaryCard } from '@/components/weekly-summary-card';
 import type { TaskStatus } from '@/types';
+
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -96,8 +98,10 @@ function ProgressBar({ value, className = '' }: { value: number; className?: str
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────
 
 export default function ProjectDashboardPage() {
-  const { id } = useParams<{ id: string }>();
+  const params = useParams<{ id: string | string[] }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const [tasks, setTasks] = useState<DashboardTask[]>([]);
+
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -291,7 +295,11 @@ export default function ProjectDashboardPage() {
         )}
       </section>
 
+      {/* ── AI 주간 요약 ─────────────────────────────────────────────────── */}
+      <WeeklySummaryCard projectId={id} />
+
       {/* ── 팀원별 달성률 ───────────────────────────────────────────────── */}
+
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-semibold text-gray-900">팀원별 달성률</h2>
 
