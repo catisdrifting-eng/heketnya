@@ -111,18 +111,27 @@ export function WeeklySummaryCard({ projectId }: WeeklySummaryCardProps) {
     <section className="flex flex-col gap-4 rounded-xl border border-gray-100 bg-white p-5">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-gray-900">AI 주간 요약</h2>
-        <button
-          type="button"
-          onClick={handleGenerate}
-          disabled={isGenerating || isCoolingDown || isLoading}
-          className="shrink-0 rounded-lg bg-gray-900 px-3.5 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          {isGenerating
-            ? '생성 중...'
-            : isCoolingDown
-              ? `${formatRemaining(remainingMs)} 후 재생성 가능`
-              : '요약 생성'}
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={handleGenerate}
+            disabled={isGenerating || isCoolingDown || isLoading}
+            className="rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {isGenerating
+              ? '생성 중...'
+              : isCoolingDown
+                ? `${formatRemaining(remainingMs)} 후 재생성 가능`
+                : summary
+                  ? '재생성'
+                  : '요약 생성'}
+          </button>
+          {summary && !isGenerating && (
+            <p className="text-xs text-gray-400">
+              {formatDateTime(summary.created_at)}에 생성됨
+            </p>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -145,9 +154,6 @@ export function WeeklySummaryCard({ projectId }: WeeklySummaryCardProps) {
         <div className="flex flex-col gap-3">
           <p className="text-sm leading-relaxed text-gray-700 whitespace-pre-line">
             {summary.content}
-          </p>
-          <p className="text-xs text-gray-400">
-            {formatDateTime(summary.created_at)}에 생성됨
           </p>
         </div>
       ) : (
