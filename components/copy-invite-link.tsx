@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '@/components/ui/button';
 
 export function CopyInviteLink({ inviteLink }: { inviteLink: string }) {
@@ -17,8 +18,12 @@ export function CopyInviteLink({ inviteLink }: { inviteLink: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+    <div className="flex flex-col items-center gap-3">
+      <div className="rounded-xl border border-gray-200 bg-white p-3">
+        <QRCodeSVG value={inviteLink} size={180} />
+      </div>
+
+      <div className="flex w-full items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
         <span className="flex-1 truncate text-sm text-gray-600 font-mono">
           {inviteLink}
         </span>

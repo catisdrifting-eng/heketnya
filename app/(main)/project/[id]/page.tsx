@@ -92,7 +92,7 @@ export default async function ProjectPage({ params }: Props) {
   // 프로젝트 조회
   const { data: project } = await supabase
     .from('projects')
-    .select('id, name, status, deadline, description, type, owner_id, invite_token')
+    .select('id, name, status, deadline, description, type, owner_id, invite_token, invite_active')
     .eq('id', id)
     .single();
 
@@ -111,6 +111,9 @@ export default async function ProjectPage({ params }: Props) {
 
   const status = project.status as ProjectStatus;
   const isOwner = currentUser?.id === project.owner_id;
+  const isMember =
+    isOwner ||
+    (members?.some((member) => member.user_id === currentUser?.id) ?? false);
 
   return (
     <div className="flex flex-col gap-8">
@@ -145,10 +148,15 @@ export default async function ProjectPage({ params }: Props) {
         )}
       </div>
 
-      {/* 초대 링크 복사 — 개설자 + invite_token 있을 때만 표시 */}
-      {isOwner && project.invite_token && (
+      {/* 초대 링크 복사 — 프로젝트 멤버 + invite_token 있을 때 표시 */}
+      {isMember && project.invite_token && (
         <div className="flex flex-col gap-1.5">
           <p className="text-xs font-medium text-gray-600">초대 링크</p>
+          {!project.invite_active && (
+            <p className="text-xs text-amber-600">
+              현재 초대가 비활성화되어 있어 새 팀원이 참여할 수 없습니다.
+            </p>
+          )}
           <CopyInviteLink
             inviteLink={`${process.env.NEXT_PUBLIC_APP_URL}/join/${project.invite_token}`}
           />
