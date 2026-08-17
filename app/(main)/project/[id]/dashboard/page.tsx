@@ -177,7 +177,19 @@ export default function ProjectDashboardPage() {
 
   const totalCount = tasks.length;
   const completedCount = tasks.filter((t) => t.status === 'completed').length;
+  const inProgressCount = tasks.filter((t) => t.status === 'in_progress').length;
+  const pendingCount = tasks.filter((t) => t.status === 'pending').length;
   const overallPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+  const completedPct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const inProgressPct = totalCount > 0 ? (inProgressCount / totalCount) * 100 : 0;
+  const pendingPct = totalCount > 0 ? (pendingCount / totalCount) * 100 : 0;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdueCount = tasks.filter((t) => {
+    if (!t.due_date || t.status === 'completed') return false;
+    return new Date(t.due_date) < today;
+  }).length;
 
   const memberStats: MemberStats[] = members.map((m) => {
     const myTasks = tasks.filter((t) => t.assignee_id === m.user_id);
@@ -221,17 +233,62 @@ export default function ProjectDashboardPage() {
 
   return (
     <div className="flex flex-col gap-10">
-      {/* ── 전체 진행률 ─────────────────────────────────────────────────── */}
-      <section className="flex flex-col gap-3">
+      {/* ── 팀 전체 진행 현황 ────────────────────────────────────────────── */}
+      <section className="flex flex-col gap-4 rounded-xl border border-gray-100 bg-white p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">전체 진행률</h2>
-          <span className="text-sm font-semibold text-gray-700">{overallPct}%</span>
+          <h2 className="text-base font-semibold text-gray-900">팀 전체 진행 현황</h2>
+          <span className="text-lg font-bold text-gray-900">{overallPct}%</span>
         </div>
-        <ProgressBar value={overallPct} />
-        <p className="text-xs text-gray-400">
-          전체 {totalCount}개 태스크 중{' '}
-          <span className="font-medium text-gray-600">{completedCount}개</span> 완료
-        </p>
+
+        {/* 가로 막대: 완료/진행중/대기 비율 */}
+        {totalCount > 0 ? (
+          <div className="flex h-3 w-full overflow-hidden rounded-full bg-gray-100">
+            <div
+              className="h-full bg-green-500 transition-all duration-500"
+              style={{ width: `${completedPct}%` }}
+            />
+            <div
+              className="h-full bg-blue-400 transition-all duration-500"
+              style={{ width: `${inProgressPct}%` }}
+            />
+            <div
+              className="h-full bg-gray-200 transition-all duration-500"
+              style={{ width: `${pendingPct}%` }}
+            />
+          </div>
+        ) : (
+          <div className="h-3 w-full rounded-full bg-gray-100" />
+        )}
+
+        {/* 범례 + 숫자 */}
+        <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-green-500" />
+            완료 <span className="font-semibold text-gray-700">{completedCount}</span>개
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-blue-400" />
+            진행중 <span className="font-semibold text-gray-700">{inProgressCount}</span>개
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-2.5 w-2.5 rounded-full bg-gray-300" />
+            대기 <span className="font-semibold text-gray-700">{pendingCount}</span>개
+          </span>
+          <span className="ml-auto text-gray-400">
+            전체 <span className="font-semibold text-gray-600">{totalCount}</span>개
+          </span>
+        </div>
+
+        {/* 기한 초과 경고 */}
+        {overdueCount > 0 && (
+          <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+            <span>⚠️</span>
+            <span>
+              마감일이 지난 미완료 태스크{' '}
+              <span className="font-semibold">{overdueCount}개</span>
+            </span>
+          </div>
+        )}
       </section>
 
       {/* ── 팀원별 달성률 ───────────────────────────────────────────────── */}
