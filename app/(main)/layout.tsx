@@ -17,6 +17,13 @@ export default async function MainLayout({
     redirect('/login');
   }
 
+  const displayName =
+    user.user_metadata?.name ??
+    user.user_metadata?.full_name ??
+    user.user_metadata?.nickname ??
+    user.email ??
+    '사용자';
+
   return (
     <div className="min-h-screen bg-white">
       {/* 상단 네비게이션 */}
@@ -25,7 +32,7 @@ export default async function MainLayout({
           HEKETNYA
         </span>
         <div className="flex items-center gap-4">
-          <span className="text-xs text-gray-400">{user.email}</span>
+          <span className="text-xs text-gray-400">{displayName}</span>
           <LogoutButton />
         </div>
       </header>

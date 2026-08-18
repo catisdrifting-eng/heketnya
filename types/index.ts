@@ -17,13 +17,14 @@ export type ProjectType = 'school' | 'startup' | 'thesis' | 'other';
 
 export interface User {
   id: string;
-  email: string;
-  name: string;
+  email: string | null;
+  name: string | null;
   avatar_url?: string;
   role_preference?: RolePreference;
   created_at: string;
   updated_at: string;
 }
+
 
 export interface Project {
   id: string;

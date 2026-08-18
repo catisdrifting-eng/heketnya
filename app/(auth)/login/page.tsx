@@ -14,6 +14,17 @@ export default function LoginPage() {
     });
   }
 
+  async function handleKakaoLogin() {
+    const supabase = createClient();
+    await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        scopes: 'profile_nickname profile_image talk_message',
+      },
+    });
+  }
+
   return (
     <div className="w-full max-w-sm flex flex-col items-center gap-10">
       {/* 로고 */}
@@ -63,6 +74,26 @@ export default function LoginPage() {
             />
           </svg>
           Google로 계속하기
+        </Button>
+
+        <Button
+          size="lg"
+          className="w-full gap-3 h-11 text-sm font-medium text-black bg-[#FEE500] hover:bg-[#FEE500]/90 border-[#FEE500]"
+          onClick={handleKakaoLogin}
+        >
+          {/* 카카오 말풍선 아이콘 */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            className="size-4"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 3C6.48 3 2 6.58 2 11c0 2.79 1.82 5.24 4.56 6.66-.2.73-.72 2.63-.83 3.04-.13.5.19.5.4.36.16-.11 2.6-1.76 3.65-2.48.71.1 1.45.16 2.22.16 5.52 0 10-3.58 10-8 0-4.42-4.48-8-10-8z"
+              fill="#000000"
+            />
+          </svg>
+          카카오로 계속하기
         </Button>
       </div>
 
