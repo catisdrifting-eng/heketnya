@@ -25,8 +25,14 @@ export function KakaoNotifyButton({ projectId }: KakaoNotifyButtonProps) {
         data: { user },
       } = await supabase.auth.getUser();
 
+      const provider = user?.app_metadata?.provider;
+      const providers = user?.app_metadata?.providers as string[] | undefined;
+
+      const kakaoUser =
+        provider === 'kakao' || (Array.isArray(providers) && providers.includes('kakao'));
+
       if (!cancelled) {
-        setIsKakaoUser(user?.app_metadata?.provider === 'kakao');
+        setIsKakaoUser(kakaoUser);
         setIsChecking(false);
       }
     }
@@ -100,9 +106,7 @@ export function KakaoNotifyButton({ projectId }: KakaoNotifyButtonProps) {
       </button>
 
       {result && (
-        <p
-          className={`text-xs ${result.type === 'success' ? 'text-green-600' : 'text-red-500'}`}
-        >
+        <p className={`text-xs ${result.type === 'success' ? 'text-green-600' : 'text-red-500'}`}>
           {result.message}
         </p>
       )}
