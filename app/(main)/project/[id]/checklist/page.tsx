@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
+import { KakaoNotifyButton } from '@/components/kakao-notify-button';
 import type { TaskStatus } from '@/types';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
@@ -229,14 +230,17 @@ export default function ChecklistPage() {
   return (
     <div className="flex flex-col gap-6">
       {/* 헤더 */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">내 체크리스트</h1>
-        {tasks.length > 0 && (
-          <span className="text-sm text-gray-400">
-            <span className="font-semibold text-gray-700">{completedCount}</span>
-            /{tasks.length} 완료
-          </span>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold text-gray-900">내 체크리스트</h1>
+          {tasks.length > 0 && (
+            <span className="text-sm text-gray-400">
+              <span className="font-semibold text-gray-700">{completedCount}</span>
+              /{tasks.length} 완료
+            </span>
+          )}
+        </div>
+        <KakaoNotifyButton projectId={id} />
       </div>
 
       {/* 태스크 목록 */}
