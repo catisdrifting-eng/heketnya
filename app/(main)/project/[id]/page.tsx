@@ -28,7 +28,15 @@ const STATUS_COLORS: Record<ProjectStatus, string> = {
 
 // ─── 상태별 안내 배너 ──────────────────────────────────────────────────────
 
-function StatusBanner({ status, projectId }: { status: ProjectStatus; projectId: string }) {
+function StatusBanner({
+  status,
+  projectId,
+  isSolo,
+}: {
+  status: ProjectStatus;
+  projectId: string;
+  isSolo: boolean;
+}) {
   if (status === 'setup') {
     return (
       <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
@@ -47,8 +55,14 @@ function StatusBanner({ status, projectId }: { status: ProjectStatus; projectId:
     return (
       <div className="flex items-center justify-between gap-4 rounded-xl border border-blue-200 bg-blue-50 px-5 py-4">
         <div>
-          <p className="text-sm font-medium text-blue-800">팀원들이 태스크를 선택 중이에요</p>
-          <p className="text-xs text-blue-600 mt-0.5">모든 팀원이 역할을 선택하면 프로젝트가 시작됩니다.</p>
+          <p className="text-sm font-medium text-blue-800">
+            {isSolo ? '진행할 태스크를 확인해주세요' : '팀원들이 태스크를 선택 중이에요'}
+          </p>
+          <p className="text-xs text-blue-600 mt-0.5">
+            {isSolo
+              ? '태스크를 확인하고 나면 바로 프로젝트가 시작됩니다.'
+              : '모든 팀원이 역할을 선택하면 프로젝트가 시작됩니다.'}
+          </p>
         </div>
         <Button asChild size="sm" className="shrink-0">
           <Link href={`/project/${projectId}/select`}>내 태스크 선택하기</Link>
@@ -61,10 +75,13 @@ function StatusBanner({ status, projectId }: { status: ProjectStatus; projectId:
     return (
       <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4">
         <p className="text-sm font-medium text-green-800">프로젝트 진행 중</p>
-        <p className="text-xs text-green-600 mt-0.5">팀원들과 함께 태스크를 완료해나가세요.</p>
+        <p className="text-xs text-green-600 mt-0.5">
+          {isSolo ? '태스크를 하나씩 완료해나가세요.' : '팀원들과 함께 태스크를 완료해나가세요.'}
+        </p>
       </div>
     );
   }
+
 
   if (status === 'completed') {
     return (
@@ -114,6 +131,8 @@ export default async function ProjectPage({ params }: Props) {
   const isMember =
     isOwner ||
     (members?.some((member) => member.user_id === currentUser?.id) ?? false);
+  const isSolo = (members?.length ?? 0) <= 1;
+
 
   return (
     <div className="flex flex-col gap-8">
@@ -164,7 +183,8 @@ export default async function ProjectPage({ params }: Props) {
       )}
 
       {/* 상태별 안내 배너 */}
-      <StatusBanner status={status} projectId={id} />
+      <StatusBanner status={status} projectId={id} isSolo={isSolo} />
+
 
       {/* AI 배정 버튼 — 개설자 + selecting 상태일 때만 표시 */}
       {isOwner && status === 'selecting' && (

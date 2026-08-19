@@ -131,7 +131,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // ── 8-1. 팀원이 1명이면 AI 호출 없이 남은 태스크를 전부 본인에게 배정 ────
+  if (members.length === 1) {
+    const soloUserId = members[0].userId;
+
+    const soloUpdatePromises = unclaimedTasks.map(({ id: taskId }) =>
+      supabase
+        .from('tasks')
+        .update({ assignee_id: soloUserId })
+        .eq('id', taskId)
+        .eq('project_id', projectId),
+    );
+
+    await Promise.all(soloUpdatePromises);
+
+    await supabase
+      .from('projects')
+      .update({ status: 'active' })
+      .eq('id', projectId);
+
+    return NextResponse.json(
+      {
+        success: true,
+        summary: '혼자 진행하는 프로젝트라 남은 태스크를 모두 본인에게 배정하고 시작합니다.',
+      },
+      { status: 200 },
+    );
+  }
+
   // ── 9. 프롬프트 생성 ──────────────────────────────────────────────────────
+
   const { system, user: userPrompt } = assignTasksPrompt({
     unclaimedTasks,
     members,

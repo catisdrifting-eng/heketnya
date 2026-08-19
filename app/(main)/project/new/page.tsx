@@ -130,7 +130,7 @@ function Step2({
   const isValid =
     data.name.trim() &&
     data.deadline &&
-    Number(data.teamSize) >= 2 &&
+    Number(data.teamSize) >= 1 &&
     Number(data.teamSize) <= 20;
 
   return (
@@ -178,14 +178,14 @@ function Step2({
             type="number"
             value={data.teamSize}
             onChange={(e) => onChange({ teamSize: e.target.value })}
-            min={2}
+            min={1}
             max={20}
-            placeholder="2 ~ 20"
+            placeholder="1 ~ 20 (혼자 진행해도 괜찮아요)"
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
           />
           {data.teamSize &&
-            (Number(data.teamSize) < 2 || Number(data.teamSize) > 20) && (
-              <p className="text-xs text-red-400">팀원 수는 2명 이상 20명 이하여야 합니다.</p>
+            (Number(data.teamSize) < 1 || Number(data.teamSize) > 20) && (
+              <p className="text-xs text-red-400">팀원 수는 1명 이상 20명 이하여야 합니다.</p>
             )}
         </div>
       </div>

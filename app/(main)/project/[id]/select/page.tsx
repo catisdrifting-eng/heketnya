@@ -51,7 +51,10 @@ export default function SelectPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [unclaimingId, setUnclaimingId] = useState<string | null>(null);
+  const [memberCount, setMemberCount] = useState<number | null>(null);
+  const [isFinishing, setIsFinishing] = useState(false);
   const channelRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
+
 
   // ── 초기 데이터 로드 ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -83,8 +86,8 @@ export default function SelectPage() {
 
       setCurrentUserId(user.id);
 
-      // tasks + custom_roles 조회
-      const [tasksRes, projectRes] = await Promise.all([
+      // tasks + custom_roles + 팀원 수 조회
+      const [tasksRes, projectRes, membersRes] = await Promise.all([
         supabase
           .from('tasks')
           .select('id, title, description, due_date, suggested_role, assignee_id, sort_order')
@@ -95,6 +98,10 @@ export default function SelectPage() {
           .select('custom_roles')
           .eq('id', id)
           .single(),
+        supabase
+          .from('project_members')
+          .select('user_id', { count: 'exact' })
+          .eq('project_id', id),
       ]);
 
       if (tasksRes.data) {
@@ -104,7 +111,9 @@ export default function SelectPage() {
       if (projectRes.data?.custom_roles) {
         setRoles(projectRes.data.custom_roles as Role[]);
       }
+      setMemberCount(membersRes.count ?? membersRes.data?.length ?? null);
     }
+
 
     load();
 
@@ -236,6 +245,30 @@ export default function SelectPage() {
     }
   }
 
+  // ── 선택 완료 ────────────────────────────────────────────────────────────
+  async function handleFinish() {
+    // 1인 프로젝트면서 미배정 태스크가 남아있는 경우 자동으로 전량 배정 후 이동
+    const isSolo = memberCount === 1;
+    const hasUnclaimed = tasks.some((t) => !t.assignee_id);
+
+    if (isSolo && hasUnclaimed) {
+      setIsFinishing(true);
+      try {
+        await fetch('/api/ai/assign-tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: id }),
+        });
+      } catch {
+        // 실패해도 이동은 진행 (프로젝트 페이지에서 상태 확인 가능)
+      } finally {
+        setIsFinishing(false);
+      }
+    }
+
+    router.push(`/project/${id}`);
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -248,13 +281,16 @@ export default function SelectPage() {
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">태스크 선택</h1>
             <p className="mt-1 text-sm text-gray-400">
-              담당할 태스크를 선택해주세요. 실시간으로 반영됩니다.
+              {memberCount === 1
+                ? '진행할 태스크를 확인해주세요. 선택하지 않은 태스크는 완료 시 자동으로 배정돼요.'
+                : '담당할 태스크를 선택해주세요. 실시간으로 반영됩니다.'}
             </p>
           </div>
-          <Button size="sm" onClick={() => router.push(`/project/${id}`)}>
-            선택 완료
+          <Button size="sm" onClick={handleFinish} disabled={isFinishing}>
+            {isFinishing ? '처리 중...' : '선택 완료'}
           </Button>
         </div>
+
 
         {/* 태스크 목록 */}
         {tasks.length === 0 ? (
