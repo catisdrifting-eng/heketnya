@@ -202,6 +202,11 @@ export default function ChatPage() {
     }
   }, [messages.length]);
 
+  // 화면이 마운트될 때 읽음 처리
+  useEffect(() => {
+    supabase.rpc('mark_chat_read', { p_project_id: id }).then(() => {}, () => {});
+  }, [id]);
+
   // ── Realtime 구독: 새 메시지 (id에만 의존, cleanup에서 반드시 정리) ───────
   useEffect(() => {
     const channel = supabase
@@ -220,6 +225,7 @@ export default function ChatPage() {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
+          supabase.rpc('mark_chat_read', { p_project_id: id }).then(() => {}, () => {});
         },
       )
       .subscribe();
@@ -228,6 +234,7 @@ export default function ChatPage() {
       supabase.removeChannel(channel);
     };
   }, [id]);
+
 
   // ── 스크롤 위치 추적 (맨 아래 근접 여부) ──────────────────────────────────
   // setState는 절대 호출하지 않고, ref만 갱신해서 렌더 트리거를 하지 않는다.

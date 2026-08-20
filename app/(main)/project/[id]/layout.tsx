@@ -16,7 +16,7 @@ export default function ProjectLayout({
   const params = useParams<{ id: string }>();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const pathname = usePathname();
-  const [hasUnread, setHasUnread] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const chatHref = `/project/${id}/chat`;
   const isChatActive = pathname === chatHref;
@@ -29,18 +29,66 @@ export default function ProjectLayout({
     { label: '파일', href: `/project/${id}/files` },
   ];
 
-  // 채팅 탭에 들어가 있으면 안읽음 표시를 끔
+  // 채팅 탭에 들어가 있으면 안읽음 개수를 0으로 만듦
   useEffect(() => {
     if (isChatActive) {
-      setHasUnread(false);
+      setUnreadCount(0);
     }
   }, [isChatActive]);
 
-  // 채팅 탭 밖에 있는 동안 새 메시지가 오면 안읽음 표시를 켬
+  // 채팅 탭 밖에 있는 동안 새 메시지가 오면 안읽음 개수를 늘림
   const isChatActiveRef = useRef(isChatActive);
   useEffect(() => {
     isChatActiveRef.current = isChatActive;
   }, [isChatActive]);
+
+  const currentUserIdRef = useRef<string>('');
+
+  // 화면이 뜰 때 안 읽은 메시지 개수를 계산
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadUnreadCount() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (cancelled || !user) return;
+      currentUserIdRef.current = user.id;
+
+      const { data: memberRow } = await supabase
+        .from('project_members')
+        .select('last_read_at')
+        .eq('project_id', id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      const lastReadAt = memberRow?.last_read_at ?? null;
+
+      let query = supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('project_id', id)
+        .neq('user_id', user.id);
+
+      if (lastReadAt) {
+        query = query.gt('created_at', lastReadAt);
+      }
+
+      const { count } = await query;
+
+      if (!cancelled) {
+        setUnreadCount(count ?? 0);
+      }
+    }
+
+    loadUnreadCount();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
   useEffect(() => {
     // 채널 구독이 실패(CHANNEL_ERROR/TIMED_OUT/CLOSED)했을 때 조용히
@@ -67,12 +115,17 @@ export default function ProjectLayout({
             filter: `project_id=eq.${id}`,
           },
           (payload) => {
-            if (!isChatActiveRef.current) {
-              setHasUnread(true);
+            const newMsg = payload.new as { user_id?: string };
+            if (
+              !isChatActiveRef.current &&
+              newMsg?.user_id !== currentUserIdRef.current
+            ) {
+              setUnreadCount((prev) => prev + 1);
             }
           },
         )
         .subscribe((status) => {
+
           if (
             !cancelled &&
             (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
@@ -125,9 +178,12 @@ export default function ProjectLayout({
               }`}
             >
               {tab.label}
-              {isChatTab && hasUnread && (
-                <span className="absolute right-1 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+              {isChatTab && unreadCount > 0 && (
+                <span className="absolute right-0.5 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
               )}
+
             </Link>
           );
         })}
