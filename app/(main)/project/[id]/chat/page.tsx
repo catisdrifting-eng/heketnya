@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { ChatSummary } from '@/components/chat-summary';
 
 // ─── Supabase 클라이언트: 모듈 스코프에서 한 번만 생성해 재사용 ─────────────
 // (컴포넌트 본문/렌더마다 새 인스턴스를 만들면 매번 새 참조가 생겨
@@ -450,6 +451,7 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-[calc(100dvh-14rem)] min-h-[24rem] flex-col">
+      <ChatSummary projectId={id} />
       {/* 메시지 목록 */}
       <div
         ref={scrollContainerRef}
