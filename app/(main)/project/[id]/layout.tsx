@@ -26,6 +26,7 @@ export default function ProjectLayout({
     { label: '대시보드', href: `/project/${id}/dashboard` },
     { label: '내 체크리스트', href: `/project/${id}/checklist` },
     { label: '채팅', href: chatHref },
+    { label: '파일', href: `/project/${id}/files` },
   ];
 
   // 채팅 탭에 들어가 있으면 안읽음 표시를 끔
