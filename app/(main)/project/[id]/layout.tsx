@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import ChatPopup from '@/components/chat-popup';
+
 
 // 컴포넌트 본문/렌더마다 새 인스턴스를 만들지 않도록 모듈 스코프에서 한 번만 생성
 const supabase = createClient();
@@ -43,6 +45,8 @@ export default function ProjectLayout({
   }, [isChatActive]);
 
   const currentUserIdRef = useRef<string>('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
 
   // 화면이 뜰 때 안 읽은 메시지 개수를 계산
   useEffect(() => {
@@ -54,6 +58,8 @@ export default function ProjectLayout({
       } = await supabase.auth.getUser();
       if (cancelled || !user) return;
       currentUserIdRef.current = user.id;
+      setCurrentUserId(user.id);
+
 
       const { data: memberRow } = await supabase
         .from('project_members')
@@ -190,6 +196,15 @@ export default function ProjectLayout({
       </nav>
 
       {children}
+
+      {!isChatActive && (
+        <ChatPopup
+          projectId={id}
+          currentUserId={currentUserId}
+          onOpened={() => setUnreadCount(0)}
+        />
+      )}
     </div>
   );
 }
+
