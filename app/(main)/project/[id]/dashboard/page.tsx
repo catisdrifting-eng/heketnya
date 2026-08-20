@@ -323,19 +323,24 @@ export default function ProjectDashboardPage() {
 
       try {
         const supabase = createClient();
-        const { data, error } = await supabase
-          .from('tasks')
-          .update({ assignee_id: normalized })
-          .eq('id', task.id)
-          .select();
+        const { error } = await supabase.rpc('set_task_assignee', {
+          p_task_id: task.id,
+          p_assignee: normalized,
+        });
 
-        if (error || !data || data.length === 0) {
+        if (error) {
           setTasks((prev) =>
             prev.map((t) =>
               t.id === task.id ? { ...t, assignee_id: previousAssigneeId } : t,
             ),
           );
-          setAssignError(`'${task.title}' 담당자 변경에 실패했어요.`);
+          if (error.message?.includes('not_allowed')) {
+            setAssignError(`'${task.title}' 담당자를 바꿀 권한이 없어요.`);
+          } else if (error.message?.includes('not_a_member')) {
+            setAssignError(`'${task.title}' 담당자로 지정할 수 없는 사용자예요.`);
+          } else {
+            setAssignError(`'${task.title}' 담당자 변경에 실패했어요.`);
+          }
           return;
         }
 
@@ -343,6 +348,7 @@ export default function ProjectDashboardPage() {
       } finally {
         setAssigningId(null);
       }
+
     },
     [load],
   );
@@ -804,8 +810,7 @@ export default function ProjectDashboardPage() {
                               !!currentUserId && task.assignee_id === currentUserId;
                             const disabled =
                               assigningId === task.id ||
-                              (!isOwner && !!task.assignee_id && !isSelf) ||
-                              (!isOwner && isSelf);
+                              (!isOwner && !!task.assignee_id && !isSelf);
 
                             // 옵션 구성
                             let options: { value: string; label: string }[];
@@ -818,8 +823,9 @@ export default function ProjectDashboardPage() {
                                 })),
                               ];
                             } else {
-                              options = [];
+                              options = [{ value: '', label: '미지정' }];
                               if (task.assignee_id && !isSelf) {
+
                                 options.push({
                                   value: task.assignee_id,
                                   label: getMemberName(task.assignee_id),

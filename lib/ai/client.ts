@@ -20,7 +20,7 @@ const DEFAULTS = {
   fallback: (process.env.AI_FALLBACK_PROVIDER as AIProvider | undefined) || "groq",
   models: {
     gemini: process.env.GEMINI_MODEL || "gemini-2.5-flash",
-    groq: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    groq: process.env.GROQ_MODEL ?? "openai/gpt-oss-120b",
     anthropic: process.env.AI_MODEL || "claude-sonnet-4-6",
   },
 };
@@ -40,6 +40,13 @@ class AIProviderError extends Error {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// 로그용 사유 문자열을 200자로 자르고 넘치면 '…' 을 붙인다.
+function truncateReason(reason: string): string {
+  if (reason.length <= 200) return reason;
+  return `${reason.slice(0, 200)}…`;
+}
+
 
 type ProviderFn = (
   system: string,
@@ -219,16 +226,19 @@ async function callWithRetry(
         ? `타임아웃(${timeoutMs}ms) 초과`
         : (err as Error)?.message ?? String(err);
 
-      // 재시도하지 않는 경우: 429를 제외한 HTTP 4xx.
-      const noRetry = typeof status === "number" && status >= 400 && status < 500 && status !== 429;
+      // 재시도하지 않는 경우: HTTP 4xx (429는 재시도해도 소용없으므로 즉시 실패).
+      const noRetry = typeof status === "number" && status >= 400 && status < 500;
 
       console.error(
-        `[callAI] provider=${provider} attempt=${attempt}/${totalAttempts} reason=${lastReason}`,
+        `[callAI] provider=${provider} attempt=${attempt}/${totalAttempts} reason=${truncateReason(lastReason)}`,
       );
 
       if (noRetry || attempt >= totalAttempts) {
-        throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+        const finalErr = new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+        if (typeof status === "number") (finalErr as { status?: number }).status = status;
+        throw finalErr;
       }
+
 
       await sleep(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
     } finally {
@@ -240,8 +250,18 @@ async function callWithRetry(
   throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
 }
 
+// provider가 실제로 호출 가능한지(필요한 env가 채워져 있는지) 확인.
+// 비어있으면 폴백 체인에서 그 단계를 건너뛴다.
+function isProviderConfigured(provider: AIProvider): boolean {
+  if (provider === "gemini") return !!process.env.GEMINI_API_KEY;
+  if (provider === "groq") return !!process.env.GROQ_API_KEY;
+  if (provider === "anthropic") return !!process.env.AI_API_KEY && !!process.env.AI_API_BASE_URL;
+  return false;
+}
+
 /**
- * 통합 호출. provider 미지정 시 env의 AI_PROVIDER 사용, 실패하면 AI_FALLBACK_PROVIDER로 1회 재시도.
+ * 통합 호출. provider 미지정 시 env의 AI_PROVIDER 사용, 실패하면
+ * gemini → groq → anthropic(학교 API) 순으로 폴백한다 (primary는 그대로 우선 시도).
  * 반환값은 순수 텍스트(보통 JSON 문자열) — 파싱은 호출하는 route에서.
  * options 없이 호출하면 재시도(기본 2회)와 타임아웃(기본 60000ms)만 적용되고 기존 동작·반환값은 동일하다.
  */
@@ -252,15 +272,39 @@ export async function callAI(opts: CallAIOptions): Promise<string> {
   const validate = opts.validate;
 
   const primary = opts.provider ?? DEFAULTS.primary;
-  const primaryModel = opts.model ?? DEFAULTS.models[primary];
-  console.log(`[AI] provider=${primary} model=${primaryModel}`);
 
-  try {
-    return await callWithRetry(primary, system, user, maxTokens, primaryModel, retries, timeoutMs, validate);
-  } catch (err) {
-    const fb = DEFAULTS.fallback;
-    if (!fb || fb === primary) throw err;
-    console.warn(`[AI] ${primary} 실패 → ${fb} 폴백:`, (err as Error).message);
-    return await callWithRetry(fb, system, user, maxTokens, DEFAULTS.models[fb], retries, timeoutMs, validate);
+  // 폴백 체인: primary 먼저, 그 다음 gemini → groq → anthropic(학교 API) 순서로
+  // (primary와 중복되거나 env 미설정인 provider는 건너뜀).
+  const chainOrder: AIProvider[] = ["gemini", "groq", "anthropic"];
+  const chain = [primary, ...chainOrder.filter((p) => p !== primary)];
+
+  const attempted: { provider: AIProvider; reason: string }[] = [];
+
+  for (let i = 0; i < chain.length; i++) {
+    const provider = chain[i];
+
+    if (!isProviderConfigured(provider)) {
+      attempted.push({ provider, reason: "미설정(env 없음)" });
+      continue;
+    }
+
+    const model = provider === primary ? opts.model ?? DEFAULTS.models[provider] : DEFAULTS.models[provider];
+    console.log(`[AI] provider=${provider} model=${model}`);
+
+    try {
+      return await callWithRetry(provider, system, user, maxTokens, model, retries, timeoutMs, validate);
+    } catch (err) {
+      const status = (err as { status?: number })?.status;
+      const reason = status ? String(status) : (err as Error)?.message ?? String(err);
+      attempted.push({ provider, reason });
+      if (i < chain.length - 1) {
+        console.warn(`[AI] ${provider} 실패 → 다음 폴백으로:`, truncateReason(reason));
+      }
+    }
   }
+
+  const summary = attempted.map((a) => `${a.provider}(${a.reason})`).join(", ");
+  console.error(`[callAI] 전체 실패: ${summary}`);
+  throw new Error(`[callAI] 전체 실패: ${summary}`);
 }
+

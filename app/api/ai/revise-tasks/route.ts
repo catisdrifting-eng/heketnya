@@ -15,6 +15,7 @@ interface TaskRow {
   status: string;
   suggested_role: string | null;
   sort_order: number | null;
+  assignee_id: string | null;
 }
 
 type ProposalOp = 'add' | 'update' | 'delete';
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
   // ── 3. 프로젝트 조회 ──────────────────────────────────────────────────────
   const { data: project, error: projectError } = await supabase
     .from('projects')
-    .select('id, name, description, deadline, owner_id')
+    .select('id, name, description, deadline, owner_id, custom_roles')
     .eq('id', projectId)
     .single();
 
@@ -117,7 +118,7 @@ export async function POST(request: NextRequest) {
   // ── 5. 태스크 목록 조회 ───────────────────────────────────────────────────
   const { data: tasksRaw } = await supabase
     .from('tasks')
-    .select('id, title, description, due_date, status, suggested_role, sort_order')
+    .select('id, title, description, due_date, status, suggested_role, sort_order, assignee_id')
     .eq('project_id', projectId)
     .is('deleted_at', null)
     .order('sort_order', { ascending: true });
@@ -128,8 +129,53 @@ export async function POST(request: NextRequest) {
     taskMap[t.id] = t;
   });
 
+  // ── 5-1. 프로젝트 멤버 + 사용자 정보 조회 (담당자 이름 매핑용) ────────────
+  const { data: membersRaw } = await supabase
+    .from('project_members')
+    .select('user_id, role_preference')
+    .eq('project_id', projectId);
+
+  const memberList = membersRaw ?? [];
+  const memberUserIds = memberList.map((m) => m.user_id);
+
+  const userNameMap: Record<string, string> = {};
+  if (memberUserIds.length > 0) {
+    const { data: usersRaw } = await supabase
+      .from('users')
+      .select('id, name')
+      .in('id', memberUserIds);
+
+    (usersRaw ?? []).forEach((u: { id: string; name: string | null }) => {
+      userNameMap[u.id] = u.name ?? '이름없음';
+    });
+  }
+
+  const requesterName = userNameMap[user.id] ?? user.email ?? '요청자';
+
+  // ── 5-2. 태스크별 수정 가능 여부 계산 ─────────────────────────────────────
+  // 요청자가 담당자이거나 / 요청자가 프로젝트 개설자이거나 / 담당자가 없으면 → 가능
+  const editableMap: Record<string, boolean> = {};
+  tasks.forEach((t) => {
+    const editable = t.assignee_id === user.id || isOwner || !t.assignee_id;
+    editableMap[t.id] = editable;
+  });
+
   // ── 6. 오늘 날짜 (한국 시간 기준) ─────────────────────────────────────────
   const today = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  // ── 6-1. 프로젝트에 정의된 역할 목록 (projects.custom_roles 만 사용) ──────
+  const customRolesRaw = Array.isArray(project.custom_roles) ? project.custom_roles : [];
+  const customRoles: { id: string; label: string }[] = customRolesRaw
+    .filter(
+      (r: unknown): r is { id: string; label: string } =>
+        !!r &&
+        typeof r === 'object' &&
+        typeof (r as { id?: unknown }).id === 'string' &&
+        typeof (r as { label?: unknown }).label === 'string',
+    )
+    .map((r) => ({ id: r.id, label: r.label }));
+  const validRoleIds = new Set(customRoles.map((r) => r.id));
+
 
   // ── 7. 프롬프트 생성 ──────────────────────────────────────────────────────
   const system = `너는 프로젝트 관리 도우미다. 사용자의 자연어 지시를 바탕으로 태스크 변경 제안을 JSON으로만 출력한다.
@@ -153,6 +199,19 @@ export async function POST(request: NextRequest) {
 - 지시와 무관한 태스크는 건드리지 마라. 바꿀 필요가 없으면 proposals 를 빈 배열로 두어라.
 - 제안은 최대 20개까지만 하라.
 - reason 은 40자 이내로 짧게 써라.
+- '내 태스크', '내가 맡은 것' 같은 표현은 요청자가 담당자인 태스크를 뜻한다.
+- '미지정', '아무도 안 맡은 것' 은 담당자가 없는 태스크를 뜻한다.
+- editable 이 false 인 태스크는 맥락 참고용이다. 그 태스크에 대해 update 나 delete 를 제안하지 마라. 요청이 전체를 대상으로 하더라도 editable 이 true 인 것만 제안하라.
+${
+  customRoles.length > 0
+    ? `- 사용할 수 있는 역할: ${customRoles.map((r) => `${r.id}(${r.label})`).join(', ')}
+- suggested_role 에는 위 목록의 id 값만 써라. 괄호 안의 한글은 설명이니 그대로 쓰지 마라.
+- 적절한 역할이 목록에 없으면 반드시 null 로 두어라. 새 id 를 지어내지 마라.`
+    : `- 이 프로젝트에는 정의된 역할이 없다. suggested_role 은 항상 null 로 두어라.`
+}
+
+- 오늘은 ${today}이다. '오늘', '내일', '이번 주', '일주일 뒤', '다음 주 월요일' 같은 표현은 모두 이 날짜를 기준으로 계산해서 YYYY-MM-DD 형식으로 변환하라.
+- 마감일을 정할 수 없으면 null 로 두어라. 추측해서 아무 날짜나 넣지 마라.
 - 설명하지 말고 JSON 만 출력하라.`;
 
   const projectInfo = {
@@ -169,9 +228,13 @@ export async function POST(request: NextRequest) {
     status: t.status,
     suggested_role: t.suggested_role ?? null,
     sort_order: t.sort_order ?? null,
+    assignee_name: t.assignee_id ? (userNameMap[t.assignee_id] ?? '이름없음') : '미지정',
+    editable: editableMap[t.id],
   }));
 
-  const userPrompt = `오늘 날짜: ${today}
+  const userPrompt = `이 요청을 한 사람은 ${requesterName}(id: ${user.id})입니다.
+
+오늘 날짜: ${today}
 
 프로젝트 정보:
 ${JSON.stringify(projectInfo, null, 2)}
@@ -230,6 +293,10 @@ ${instruction}`;
     if (p.op === 'update' || p.op === 'delete') {
       if (!p.task_id || !taskMap[p.task_id]) {
         droppedCount++;
+        continue;
+      }
+      // 권한 밖 태스크는 조용히 제외한다 (droppedCount 에 넣지 않음)
+      if (!editableMap[p.task_id]) {
         continue;
       }
     }
