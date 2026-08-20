@@ -543,7 +543,7 @@ export default function ProjectDashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="flex flex-col gap-10 pb-24">
       {/* ── 팀 전체 진행 현황 ────────────────────────────────────────────── */}
       <section className="flex flex-col gap-4 rounded-xl border border-gray-100 bg-white p-5">
         <div className="flex items-center justify-between">
@@ -692,13 +692,13 @@ export default function ProjectDashboardPage() {
 
         {/* 태스크 추가 폼 */}
         <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="text"
               value={newTitle}
               onChange={(e) => setNewTitle(e.target.value)}
               placeholder="새 태스크 제목"
-              className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+              className="w-full sm:w-auto flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
             />
             <select
               value={newAssigneeId}
@@ -733,14 +733,14 @@ export default function ProjectDashboardPage() {
               value={newRole}
               onChange={(e) => setNewRole(e.target.value)}
               placeholder="역할 (선택)"
-              className="flex-1 min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+              className="w-full sm:w-auto flex-1 min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
             />
             <textarea
               rows={2}
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
               placeholder="설명 (선택)"
-              className="flex-[2] min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition resize-none"
+              className="w-full sm:w-auto sm:flex-1 min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition resize-none"
             />
           </div>
           {addError && <p className="text-xs text-red-500">{addError}</p>}
@@ -779,7 +779,7 @@ export default function ProjectDashboardPage() {
                         key={task.id}
                         className="flex flex-col rounded-xl border border-gray-100 bg-white px-4 py-3"
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 gap-y-2">
                         {/* 제목 */}
                         <span
                           onClick={() =>
@@ -787,7 +787,7 @@ export default function ProjectDashboardPage() {
                               prev === task.id ? null : task.id,
                             )
                           }
-                          className={`flex-1 min-w-0 cursor-pointer text-sm font-medium truncate ${
+                          className={`w-full sm:w-auto sm:flex-1 min-w-0 break-words cursor-pointer text-sm font-medium sm:truncate ${
                             task.status === 'completed'
                               ? 'line-through text-gray-400'
                               : 'text-gray-900'
@@ -850,7 +850,7 @@ export default function ProjectDashboardPage() {
                                 onChange={(e) =>
                                   handleAssigneeChange(task, e.target.value)
                                 }
-                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition disabled:cursor-not-allowed disabled:opacity-50"
+                                className="max-w-[7.5rem] sm:max-w-none rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 {options.map((o) => (
                                   <option key={o.value || '__none__'} value={o.value}>

@@ -15,12 +15,14 @@ export function getRoleColor(roleId: string | null): string {
   if (!roleId) return 'bg-gray-100 text-gray-600';
   const colors = [
     'bg-blue-50 text-blue-700',
-    'bg-purple-50 text-purple-700',
     'bg-green-50 text-green-700',
+    'bg-purple-50 text-purple-700',
     'bg-amber-50 text-amber-700',
-    'bg-pink-50 text-pink-700',
     'bg-teal-50 text-teal-700',
+    'bg-indigo-50 text-indigo-700',
+    'bg-slate-50 text-slate-700',
   ];
+
   let hash = 0;
   for (let i = 0; i < roleId.length; i++) {
     hash = roleId.charCodeAt(i) + ((hash << 5) - hash);

@@ -19,6 +19,7 @@ export default function ProjectLayout({
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const pathname = usePathname();
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
 
   const chatHref = `/project/${id}/chat`;
   const isChatActive = pathname === chatHref;
@@ -37,6 +38,12 @@ export default function ProjectLayout({
       setUnreadCount(0);
     }
   }, [isChatActive]);
+
+  // 경로가 실제로 바뀌면(전환이 끝나면) 눌림 표시를 해제
+  useEffect(() => {
+    setPendingHref(null);
+  }, [pathname]);
+
 
   // 채팅 탭 밖에 있는 동안 새 메시지가 오면 안읽음 개수를 늘림
   const isChatActiveRef = useRef(isChatActive);
@@ -158,7 +165,7 @@ export default function ProjectLayout({
   }, [id]);
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col gap-0 px-4 sm:px-0">
       {/* 내 프로젝트로 돌아가기 */}
       <Link
         href="/dashboard"
@@ -168,22 +175,31 @@ export default function ProjectLayout({
       </Link>
 
       {/* 탭 네비게이션 */}
-      <nav className="flex gap-0 border-b border-gray-100 mb-8">
+      <nav className="flex flex-nowrap items-center gap-1 overflow-x-auto border-b border-gray-100 mb-8 px-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 
         {tabs.map((tab) => {
           const isActive = pathname === tab.href;
+          const isPending = pendingHref !== null && pendingHref === tab.href && pathname !== tab.href;
           const isChatTab = tab.href === chatHref;
           return (
             <Link
               key={tab.href}
               href={tab.href}
-              className={`relative px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                isActive
+              onClick={() => setPendingHref(tab.href)}
+              className={`relative shrink-0 whitespace-nowrap px-4 py-2.5 text-sm font-medium border-b-2 transition-colors active:opacity-60 ${
+                isActive || isPending
                   ? 'border-gray-900 text-gray-900'
                   : 'border-transparent text-gray-400 hover:text-gray-700'
               }`}
             >
               {tab.label}
+              {isPending && (
+                <span className="ml-1 inline-flex gap-0.5 align-middle">
+                  <span className="h-1 w-1 rounded-full bg-gray-400 animate-pulse" />
+                  <span className="h-1 w-1 rounded-full bg-gray-400 animate-pulse [animation-delay:150ms]" />
+                  <span className="h-1 w-1 rounded-full bg-gray-400 animate-pulse [animation-delay:300ms]" />
+                </span>
+              )}
               {isChatTab && unreadCount > 0 && (
                 <span className="absolute right-0.5 top-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold leading-none text-white">
                   {unreadCount > 99 ? '99+' : unreadCount}
@@ -196,6 +212,7 @@ export default function ProjectLayout({
       </nav>
 
       {children}
+
 
       {!isChatActive && (
         <ChatPopup
