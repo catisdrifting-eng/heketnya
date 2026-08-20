@@ -117,6 +117,8 @@ export default function ProjectDashboardPage() {
   const [newTitle, setNewTitle] = useState('');
   const [newAssigneeId, setNewAssigneeId] = useState<string>('');
   const [newDueDate, setNewDueDate] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [newDescription, setNewDescription] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -198,6 +200,8 @@ export default function ProjectDashboardPage() {
         title,
         assignee_id: newAssigneeId || null,
         due_date: newDueDate || null,
+        suggested_role: newRole.trim() || null,
+        description: newDescription.trim() || null,
         status: 'pending',
         sort_order: tasks.length === 0 ? 0 : maxSortOrder + 1,
       });
@@ -210,11 +214,14 @@ export default function ProjectDashboardPage() {
       setNewTitle('');
       setNewAssigneeId('');
       setNewDueDate('');
+      setNewRole('');
+      setNewDescription('');
       await load();
     } finally {
       setIsAdding(false);
     }
-  }, [newTitle, newAssigneeId, newDueDate, isAdding, tasks, id, load]);
+  }, [newTitle, newAssigneeId, newDueDate, newRole, newDescription, isAdding, tasks, id, load]);
+
 
   // ── 태스크 삭제 ───────────────────────────────────────────────────────────
   const handleDeleteTask = useCallback(

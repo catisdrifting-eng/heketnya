@@ -152,7 +152,23 @@ export async function POST(request: NextRequest) {
   // ── 10. AI 호출 (Gemini 메인 + Groq 폴백) ────────────────────────────────
   let rawText: string;
   try {
-    rawText = await callAI({ system, user: userPrompt, maxTokens: 2000 });
+    rawText = await callAI({
+      system,
+      user: userPrompt,
+      maxTokens: 2000,
+      validate: (t) => {
+        try {
+          const cleaned = t
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/, '')
+            .trim();
+          JSON.parse(cleaned);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    });
   } catch {
     return NextResponse.json({ error: 'AI 호출에 실패했어요.' }, { status: 500 });
   }
