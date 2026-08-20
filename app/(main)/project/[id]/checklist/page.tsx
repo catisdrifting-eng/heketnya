@@ -153,6 +153,7 @@ export default function ChecklistPage() {
           .select('id, title, description, due_date, suggested_role, status, memo')
           .eq('project_id', id)
           .eq('assignee_id', user.id)
+          .is('deleted_at', null)
           .order('sort_order', { ascending: true }),
         supabase
           .from('projects')

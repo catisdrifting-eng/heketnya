@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     .from('tasks')
     .select('id, title, status, due_date, assignee_id')
     .eq('project_id', projectId)
+    .is('deleted_at', null)
     .order('sort_order', { ascending: true });
 
   // ── 7. 담당자 이름 조회 ───────────────────────────────────────────────────

@@ -114,16 +114,17 @@ export default async function DashboardPage() {
   // RLS가 현재 유저의 프로젝트만 필터링 (태스크 0개인 미완성 프로젝트 제외)
   const { data: rawProjects } = await supabase
     .from('projects')
-    .select('*, tasks(status)')
+    .select('*, tasks(status, deleted_at)')
     .order('created_at', { ascending: false });
 
   const projects = (rawProjects ?? [])
     .map((p) => {
-      const taskList = (p.tasks as { status: string }[]) ?? [];
+      const taskList = (p.tasks as { status: string; deleted_at: string | null }[]) ?? [];
+      const activeTasks = taskList.filter((t) => t.deleted_at === null);
       return {
         ...p,
-        totalCount: taskList.length,
-        completedCount: taskList.filter((t) => t.status === 'completed').length,
+        totalCount: activeTasks.length,
+        completedCount: activeTasks.filter((t) => t.status === 'completed').length,
       };
     })
     .filter((p) => p.totalCount > 0);

@@ -23,6 +23,7 @@ interface DashboardTask {
   due_date: string | null;
   suggested_role: string | null;
   sort_order: number | null;
+  deleted_at: string | null;
 }
 
 
@@ -127,6 +128,11 @@ export default function ProjectDashboardPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // ── 삭제된 항목 섹션 상태 ─────────────────────────────────────────────────
+  const [isDeletedSectionOpen, setIsDeletedSectionOpen] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+
   // ── 담당자 변경 상태 ──────────────────────────────────────────────────────
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
@@ -141,7 +147,7 @@ export default function ProjectDashboardPage() {
     const [tasksRes, membersRes, projectRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('id, title, status, assignee_id, due_date, suggested_role, sort_order')
+        .select('id, title, status, assignee_id, due_date, suggested_role, sort_order, deleted_at')
         .eq('project_id', id)
         .order('sort_order', { ascending: true }),
       supabase
@@ -223,7 +229,7 @@ export default function ProjectDashboardPage() {
   }, [newTitle, newAssigneeId, newDueDate, newRole, newDescription, isAdding, tasks, id, load]);
 
 
-  // ── 태스크 삭제 ───────────────────────────────────────────────────────────
+  // ── 태스크 삭제 (소프트 삭제) ─────────────────────────────────────────────
   const handleDeleteTask = useCallback(
     async (taskId: string, title: string) => {
       setDeletingId(taskId);
@@ -231,10 +237,17 @@ export default function ProjectDashboardPage() {
 
       try {
         const supabase = createClient();
-        const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+        const { error } = await supabase.rpc('set_task_deleted', {
+          p_task_id: taskId,
+          p_deleted: true,
+        });
 
         if (error) {
-          setDeleteError(`'${title}' 삭제에 실패했어요.`);
+          if (error.message?.includes('not_allowed')) {
+            setDeleteError('삭제 권한이 없어요.');
+          } else {
+            setDeleteError(`'${title}' 삭제에 실패했어요.`);
+          }
           setConfirmingDeleteId(null);
           return;
         }
@@ -243,6 +256,36 @@ export default function ProjectDashboardPage() {
         await load();
       } finally {
         setDeletingId(null);
+      }
+    },
+    [load],
+  );
+
+  // ── 태스크 복구 ───────────────────────────────────────────────────────────
+  const handleRestoreTask = useCallback(
+    async (taskId: string, title: string) => {
+      setRestoringId(taskId);
+      setRestoreError(null);
+
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.rpc('set_task_deleted', {
+          p_task_id: taskId,
+          p_deleted: false,
+        });
+
+        if (error) {
+          if (error.message?.includes('not_allowed')) {
+            setRestoreError('삭제 권한이 없어요.');
+          } else {
+            setRestoreError(`'${title}' 복구에 실패했어요.`);
+          }
+          return;
+        }
+
+        await load();
+      } finally {
+        setRestoringId(null);
       }
     },
     [load],
@@ -318,10 +361,13 @@ export default function ProjectDashboardPage() {
 
   // ── 통계 계산 ─────────────────────────────────────────────────────────────
 
-  const totalCount = tasks.length;
-  const completedCount = tasks.filter((t) => t.status === 'completed').length;
-  const inProgressCount = tasks.filter((t) => t.status === 'in_progress').length;
-  const pendingCount = tasks.filter((t) => t.status === 'pending').length;
+  const activeTasks = tasks.filter((t) => t.deleted_at === null);
+  const deletedTasks = tasks.filter((t) => t.deleted_at !== null);
+
+  const totalCount = activeTasks.length;
+  const completedCount = activeTasks.filter((t) => t.status === 'completed').length;
+  const inProgressCount = activeTasks.filter((t) => t.status === 'in_progress').length;
+  const pendingCount = activeTasks.filter((t) => t.status === 'pending').length;
   const overallPct = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   const completedPct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
   const inProgressPct = totalCount > 0 ? (inProgressCount / totalCount) * 100 : 0;
@@ -329,13 +375,13 @@ export default function ProjectDashboardPage() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const overdueCount = tasks.filter((t) => {
+  const overdueCount = activeTasks.filter((t) => {
     if (!t.due_date || t.status === 'completed') return false;
     return new Date(t.due_date) < today;
   }).length;
 
   const memberStats: MemberStats[] = members.map((m) => {
-    const myTasks = tasks.filter((t) => t.assignee_id === m.user_id);
+    const myTasks = activeTasks.filter((t) => t.assignee_id === m.user_id);
     const myCompleted = myTasks.filter((t) => t.status === 'completed').length;
     return {
       ...m,
@@ -353,7 +399,7 @@ export default function ProjectDashboardPage() {
     in_progress: [],
     completed: [],
   };
-  for (const task of tasks) {
+  for (const task of activeTasks) {
     groupedTasks[task.status].push(task);
   }
 
@@ -717,6 +763,47 @@ export default function ProjectDashboardPage() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ── 삭제된 항목 섹션 ────────────────────────────────────────── */}
+        {deletedTasks.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {restoreError && (
+              <p className="text-xs text-red-500">{restoreError}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsDeletedSectionOpen((prev) => !prev)}
+              className="flex items-center gap-2 text-left text-sm font-medium text-gray-500 hover:text-gray-700 transition"
+            >
+              <span>{isDeletedSectionOpen ? '▾' : '▸'}</span>
+              <span>삭제된 항목 ({deletedTasks.length})</span>
+            </button>
+
+            {isDeletedSectionOpen && (
+              <div className="flex flex-col gap-2">
+                {deletedTasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3"
+                  >
+                    <span className="flex-1 min-w-0 text-sm font-medium truncate line-through text-gray-400">
+                      {task.title}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRestoreTask(task.id, task.title)}
+                      disabled={restoringId === task.id}
+                      className="shrink-0 text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-40 transition"
+                    >
+                      {restoringId === task.id ? '복구 중...' : '복구'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </section>
