@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
 import { WeeklySummaryCard } from '@/components/weekly-summary-card';
+import { TaskRevisePanel } from '@/components/task-revise-panel';
 import type { TaskStatus } from '@/types';
 
 
@@ -680,6 +681,8 @@ export default function ProjectDashboardPage() {
 
 
 
+
+        <TaskRevisePanel projectId={id} tasks={tasks} onApplied={load} />
 
         {/* 태스크 추가 폼 */}
         <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
