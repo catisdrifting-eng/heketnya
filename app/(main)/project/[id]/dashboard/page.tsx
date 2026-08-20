@@ -108,6 +108,11 @@ export default function ProjectDashboardPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── 개설자 판단 ───────────────────────────────────────────────────────────
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
+  const isOwner = !!currentUserId && !!ownerId && currentUserId === ownerId;
+
   // ── 태스크 추가 폼 상태 ───────────────────────────────────────────────────
   const [newTitle, setNewTitle] = useState('');
   const [newAssigneeId, setNewAssigneeId] = useState<string>('');
@@ -120,9 +125,16 @@ export default function ProjectDashboardPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // ── 담당자 변경 상태 ──────────────────────────────────────────────────────
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [assignError, setAssignError] = useState<string | null>(null);
+
   // ── 데이터 로드 (초기 로드 + 재조회 공용) ─────────────────────────────────
   const load = useCallback(async () => {
     const supabase = createClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    setCurrentUserId(userData?.user?.id ?? null);
 
     const [tasksRes, membersRes, projectRes] = await Promise.all([
       supabase
@@ -136,7 +148,7 @@ export default function ProjectDashboardPage() {
         .eq('project_id', id),
       supabase
         .from('projects')
-        .select('custom_roles')
+        .select('custom_roles, owner_id')
         .eq('id', id)
         .single(),
     ]);
@@ -145,6 +157,7 @@ export default function ProjectDashboardPage() {
     if (projectRes.data?.custom_roles) {
       setRoles(projectRes.data.custom_roles as Role[]);
     }
+    setOwnerId(projectRes.data?.owner_id ?? null);
 
     if (membersRes.data) {
       const parsed: TeamMember[] = membersRes.data.map((row: any) => ({
@@ -158,6 +171,7 @@ export default function ProjectDashboardPage() {
 
     setIsLoading(false);
   }, [id]);
+
 
   useEffect(() => {
     load();
@@ -227,8 +241,47 @@ export default function ProjectDashboardPage() {
     [load],
   );
 
+  // ── 담당자 변경 ───────────────────────────────────────────────────────────
+  const handleAssigneeChange = useCallback(
+    async (task: DashboardTask, newAssigneeId: string) => {
+      const normalized = newAssigneeId === '' ? null : newAssigneeId;
+      const previousAssigneeId = task.assignee_id;
+
+      // 낙관적 업데이트
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, assignee_id: normalized } : t)),
+      );
+      setAssigningId(task.id);
+      setAssignError(null);
+
+      try {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('tasks')
+          .update({ assignee_id: normalized })
+          .eq('id', task.id)
+          .select();
+
+        if (error || !data || data.length === 0) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === task.id ? { ...t, assignee_id: previousAssigneeId } : t,
+            ),
+          );
+          setAssignError(`'${task.title}' 담당자 변경에 실패했어요.`);
+          return;
+        }
+
+        await load();
+      } finally {
+        setAssigningId(null);
+      }
+    },
+    [load],
+  );
 
   // ── Realtime 구독 ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -442,6 +495,12 @@ export default function ProjectDashboardPage() {
           <p className="text-xs text-red-500">{deleteError}</p>
         )}
 
+        {/* 담당자 변경 에러 메시지 (섹션 상단) */}
+        {assignError && (
+          <p className="text-xs text-red-500">{assignError}</p>
+        )}
+
+
         {/* 태스크 추가 폼 */}
         <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -531,10 +590,62 @@ export default function ProjectDashboardPage() {
                             name={getMemberName(task.assignee_id)}
                             size="sm"
                           />
-                          <span className="text-xs text-gray-500 hidden sm:block">
-                            {getMemberName(task.assignee_id)}
-                          </span>
+                          {(() => {
+                            const isSelf =
+                              !!currentUserId && task.assignee_id === currentUserId;
+                            const disabled =
+                              assigningId === task.id ||
+                              (!isOwner && !!task.assignee_id && !isSelf) ||
+                              (!isOwner && isSelf);
+
+                            // 옵션 구성
+                            let options: { value: string; label: string }[];
+                            if (isOwner) {
+                              options = [
+                                { value: '', label: '미지정' },
+                                ...members.map((m) => ({
+                                  value: m.user_id,
+                                  label: m.name || m.email,
+                                })),
+                              ];
+                            } else {
+                              options = [];
+                              if (task.assignee_id && !isSelf) {
+                                options.push({
+                                  value: task.assignee_id,
+                                  label: getMemberName(task.assignee_id),
+                                });
+                              }
+                              const me = members.find(
+                                (m) => m.user_id === currentUserId,
+                              );
+                              if (me) {
+                                options.push({
+                                  value: me.user_id,
+                                  label: me.name || me.email,
+                                });
+                              }
+                            }
+
+                            return (
+                              <select
+                                value={task.assignee_id ?? ''}
+                                disabled={disabled}
+                                onChange={(e) =>
+                                  handleAssigneeChange(task, e.target.value)
+                                }
+                                className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {options.map((o) => (
+                                  <option key={o.value || '__none__'} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()}
                         </div>
+
 
                         {/* 마감일 */}
                         {task.due_date && (
