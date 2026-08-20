@@ -1,7 +1,9 @@
 import React from 'react';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { LogoutButton } from '@/components/logout-button';
+
 
 export default async function MainLayout({
   children,
@@ -28,9 +30,13 @@ export default async function MainLayout({
     <div className="min-h-screen bg-white">
       {/* 상단 네비게이션 */}
       <header className="border-b border-gray-100 px-6 py-3 flex items-center justify-between">
-        <span className="text-sm font-semibold tracking-tight text-gray-900">
+        <Link
+          href="/dashboard"
+          className="text-sm font-semibold tracking-tight text-gray-900 cursor-pointer hover:opacity-80"
+        >
           HEKETNYA
-        </span>
+        </Link>
+
         <div className="flex items-center gap-4">
           <span className="text-xs text-gray-400">{displayName}</span>
           <LogoutButton />

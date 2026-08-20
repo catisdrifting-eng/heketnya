@@ -27,9 +27,21 @@ interface ProjectCardProps {
   status: ProjectStatus;
   deadline?: string | null;
   description?: string | null;
+  completedCount: number;
+  totalCount: number;
 }
 
-function ProjectCard({ id, name, status, deadline, description }: ProjectCardProps) {
+function ProjectCard({
+  id,
+  name,
+  status,
+  deadline,
+  description,
+  completedCount,
+  totalCount,
+}: ProjectCardProps) {
+  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
   return (
     <Link
       href={`/project/${id}`}
@@ -67,9 +79,23 @@ function ProjectCard({ id, name, status, deadline, description }: ProjectCardPro
           </span>
         </p>
       )}
+
+      {/* 진행률 */}
+      <div className="mt-2 flex flex-col gap-1">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+          <div
+            className="h-full rounded-full bg-gray-900"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+        <p className="text-xs text-gray-400">
+          {totalCount === 0 ? '할 일 없음' : `완료 ${completedCount} / 전체 ${totalCount}`}
+        </p>
+      </div>
     </Link>
   );
 }
+
 
 // ─── 메인 페이지 ───────────────────────────────────────────────────────────
 
@@ -88,12 +114,20 @@ export default async function DashboardPage() {
   // RLS가 현재 유저의 프로젝트만 필터링 (태스크 0개인 미완성 프로젝트 제외)
   const { data: rawProjects } = await supabase
     .from('projects')
-    .select('*, tasks(count)')
+    .select('*, tasks(status)')
     .order('created_at', { ascending: false });
 
-  const projects = (rawProjects ?? []).filter(
-    (p) => (p.tasks as { count: number }[])?.[0]?.count > 0,
-  );
+  const projects = (rawProjects ?? [])
+    .map((p) => {
+      const taskList = (p.tasks as { status: string }[]) ?? [];
+      return {
+        ...p,
+        totalCount: taskList.length,
+        completedCount: taskList.filter((t) => t.status === 'completed').length,
+      };
+    })
+    .filter((p) => p.totalCount > 0);
+
 
   return (
     <div className="flex flex-col gap-10">
@@ -116,19 +150,19 @@ export default async function DashboardPage() {
           /* 빈 상태 UI */
           <div className="flex flex-col items-center justify-center gap-5 rounded-xl border border-dashed border-gray-200 bg-gray-50 py-16 text-center">
             <div className="flex flex-col items-center gap-2">
-              <span className="text-3xl">📂</span>
               <p className="text-sm font-medium text-gray-700">
-                아직 프로젝트가 없어요
+                아직 참여 중인 프로젝트가 없어요
               </p>
               <p className="text-xs text-gray-400">
-                새 프로젝트를 만들어 팀원과 함께 시작해보세요.
+                프로젝트를 만들면 AI가 할 일을 나눠 줘요
               </p>
             </div>
             <Button asChild size="sm">
-              <Link href="/project/new">새 프로젝트 만들기</Link>
+              <Link href="/project/new">프로젝트 만들기</Link>
             </Button>
           </div>
         ) : (
+
           <ul className="flex flex-col gap-2">
             {projects.map((project) => (
               <li key={project.id}>
@@ -138,7 +172,10 @@ export default async function DashboardPage() {
                   status={project.status as ProjectStatus}
                   deadline={project.deadline}
                   description={project.description}
+                  completedCount={project.completedCount}
+                  totalCount={project.totalCount}
                 />
+
               </li>
             ))}
           </ul>

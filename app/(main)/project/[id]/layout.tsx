@@ -96,8 +96,17 @@ export default function ProjectLayout({
 
   return (
     <div className="flex flex-col gap-0">
+      {/* 내 프로젝트로 돌아가기 */}
+      <Link
+        href="/dashboard"
+        className="mb-2 inline-block w-fit text-xs text-gray-400 hover:text-gray-600"
+      >
+        ← 내 프로젝트
+      </Link>
+
       {/* 탭 네비게이션 */}
       <nav className="flex gap-0 border-b border-gray-100 mb-8">
+
         {tabs.map((tab) => {
           const isActive = pathname === tab.href;
           const isChatTab = tab.href === chatHref;
