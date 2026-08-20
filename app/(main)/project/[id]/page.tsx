@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { Button } from '@/components/ui/button';
 import AssignButton from '@/components/assign-button';
 import { CopyInviteLink } from '@/components/copy-invite-link';
+import { ProjectCompletion } from '@/components/project-completion';
 import type { ProjectStatus } from '@/types';
 
 interface Props {
@@ -166,6 +167,8 @@ export default async function ProjectPage({ params }: Props) {
           </p>
         )}
       </div>
+
+      <ProjectCompletion projectId={id} status={status} isOwner={isOwner} />
 
       {/* 초대 링크 복사 — 프로젝트 멤버 + invite_token 있을 때 표시 */}
       {isMember && project.invite_token && (
