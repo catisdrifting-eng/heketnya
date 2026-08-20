@@ -55,6 +55,7 @@ export default function ProjectFilesPage() {
 
   // ── 다운로드 상태 ────────────────────────────────────────────────────────
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // ── 삭제 상태 ────────────────────────────────────────────────────────────
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -160,7 +161,7 @@ export default function ProjectFilesPage() {
         .insert({
           project_id: id,
           uploader_id: uploaderId,
-          file_name: selectedFile.name,
+          file_name: selectedFile.name.normalize('NFC'),
           file_path: storagePath,
           size_bytes: selectedFile.size,
         })
@@ -183,21 +184,31 @@ export default function ProjectFilesPage() {
   // ── 다운로드 ─────────────────────────────────────────────────────────────
   const handleDownload = useCallback(async (att: Attachment) => {
     setDownloadError(null);
+    setDownloadingId(att.id);
 
     try {
       const supabase = createClient();
       const { data, error } = await supabase.storage
         .from('project-files')
-        .createSignedUrl(att.file_path, 60);
+        .download(att.file_path);
 
-      if (error || !data?.signedUrl) {
-        setDownloadError(`'${att.file_name}' 다운로드 링크 생성에 실패했어요.`);
+      if (error || !data) {
+        setDownloadError(`'${att.file_name}' 다운로드에 실패했어요.`);
         return;
       }
 
-      window.open(data.signedUrl, '_blank');
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = att.file_name.normalize('NFC');
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
     } catch {
       setDownloadError(`'${att.file_name}' 다운로드에 실패했어요.`);
+    } finally {
+      setDownloadingId(null);
     }
   }, []);
 
@@ -295,9 +306,10 @@ export default function ProjectFilesPage() {
                 <button
                   type="button"
                   onClick={() => handleDownload(att)}
-                  className="flex-1 min-w-0 truncate text-left text-sm font-medium text-gray-900 hover:underline"
+                  disabled={downloadingId === att.id}
+                  className="flex-1 min-w-0 truncate text-left text-sm font-medium text-gray-900 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {att.file_name}
+                  {downloadingId === att.id ? '받는 중...' : att.file_name}
                 </button>
 
                 <span className="shrink-0 text-xs text-gray-400">

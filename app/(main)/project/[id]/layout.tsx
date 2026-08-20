@@ -51,6 +51,10 @@ export default function ProjectLayout({
 
     function subscribe() {
       if (cancelled) return;
+      if (channel) {
+        supabase.removeChannel(channel);
+        channel = null;
+      }
 
       channel = supabase
         .channel(`messages-unread-${id}`)
