@@ -10,6 +10,9 @@ export interface CallAIOptions {
   maxTokens?: number;      // 기본 4000
   provider?: AIProvider;   // 호출별 override (없으면 env 기본값)
   model?: string;          // 모델 override (없으면 provider 기본 모델)
+  retries?: number;                       // 기본 2 (시도당 재시도 횟수, 최초 시도 제외)
+  validate?: (text: string) => boolean;   // 기본 없음
+  timeoutMs?: number;                     // 기본 60000
 }
 
 const DEFAULTS = {
@@ -22,17 +25,34 @@ const DEFAULTS = {
   },
 };
 
+// HTTP 상태 코드를 담을 수 있는 provider 전용 에러.
+// status가 없으면 네트워크 오류/abort 등 HTTP 응답 자체가 없었던 경우.
+class AIProviderError extends Error {
+  status?: number;
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "AIProviderError";
+    this.status = status;
+  }
+}
+
+// setTimeout을 Promise로 감싼 sleep 헬퍼.
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 type ProviderFn = (
   system: string,
   user: string,
   maxTokens: number,
   model: string,
+  signal?: AbortSignal,
 ) => Promise<string>;
 
 // ─────────────────────────────────────────────
 // Gemini (Google AI Studio, 네이티브 generateContent)
 // ─────────────────────────────────────────────
-const callGemini: ProviderFn = async (system, user, maxTokens, model) => {
+const callGemini: ProviderFn = async (system, user, maxTokens, model, signal) => {
   const key = process.env.GEMINI_API_KEY;
   if (!key) throw new Error("GEMINI_API_KEY 없음");
 
@@ -49,9 +69,10 @@ const callGemini: ProviderFn = async (system, user, maxTokens, model) => {
         responseMimeType: "application/json", // JSON 강제 (마크다운 펜스 없이 순수 JSON 반환)
       },
     }),
+    signal,
   });
 
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new AIProviderError(`Gemini ${res.status}: ${await res.text()}`, res.status);
   const data = await res.json();
   const text: string =
     data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
@@ -63,7 +84,7 @@ const callGemini: ProviderFn = async (system, user, maxTokens, model) => {
 // Groq (OpenAI 호환 /chat/completions)
 // ⚠️ response_format json_object를 쓰려면 system/user에 "JSON" 단어가 있어야 함 (프롬프트에 이미 있음).
 // ─────────────────────────────────────────────
-const callGroq: ProviderFn = async (system, user, maxTokens, model) => {
+const callGroq: ProviderFn = async (system, user, maxTokens, model, signal) => {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error("GROQ_API_KEY 없음");
 
@@ -80,9 +101,10 @@ const callGroq: ProviderFn = async (system, user, maxTokens, model) => {
       ],
       response_format: { type: "json_object" }, // JSON 강제
     }),
+    signal,
   });
 
-  if (!res.ok) throw new Error(`Groq ${res.status}: ${await res.text()}`);
+  if (!res.ok) throw new AIProviderError(`Groq ${res.status}: ${await res.text()}`, res.status);
   const data = await res.json();
   const text: string = data?.choices?.[0]?.message?.content ?? "";
   if (!text) throw new Error("Groq 빈 응답");
@@ -93,7 +115,7 @@ const callGroq: ProviderFn = async (system, user, maxTokens, model) => {
 // 학교 게이트웨이 (Anthropic 네이티브 Messages, 공식 SDK) — 개발 전용, 크레딧 소모
 // SDK는 anthropic provider를 실제로 쓸 때만 동적 import → Gemini로 돌릴 땐 로드 안 됨.
 // ─────────────────────────────────────────────
-const callAnthropic: ProviderFn = async (system, user, maxTokens, model) => {
+const callAnthropic: ProviderFn = async (system, user, maxTokens, model, signal) => {
   const key = process.env.AI_API_KEY;
   if (!key) throw new Error("AI_API_KEY 없음");
 
@@ -103,12 +125,24 @@ const callAnthropic: ProviderFn = async (system, user, maxTokens, model) => {
     apiKey: key,
   });
 
-  const message = await client.messages.create({
-    model,
-    max_tokens: maxTokens,
-    system,
-    messages: [{ role: "user", content: user }],
-  });
+  let message;
+  try {
+    message = await client.messages.create(
+      {
+        model,
+        max_tokens: maxTokens,
+        system,
+        messages: [{ role: "user", content: user }],
+      },
+      { signal },
+    );
+  } catch (err) {
+    const status = (err as { status?: number })?.status;
+    if (typeof status === "number") {
+      throw new AIProviderError((err as Error).message, status);
+    }
+    throw err;
+  }
 
   const block = message.content[0];
   if (!block || block.type !== "text") throw new Error("학교 API: 예상치 못한 응답 타입");
@@ -121,22 +155,112 @@ const DISPATCH: Record<AIProvider, ProviderFn> = {
   anthropic: callAnthropic,
 };
 
+// 재시도 지연(ms): 1회차 실패 후 1초, 2회차 실패 후 2초.
+const RETRY_DELAYS_MS = [1000, 2000];
+
+/**
+ * 하나의 provider에 대해 재시도·타임아웃을 적용하며 호출한다.
+ * 메인/폴백 모두 이 함수를 통해서만 호출되어 재시도 로직이 중복되지 않는다.
+ */
+async function callWithRetry(
+  provider: AIProvider,
+  system: string,
+  user: string,
+  maxTokens: number,
+  model: string,
+  retries: number,
+  timeoutMs: number,
+  validate?: (text: string) => boolean,
+): Promise<string> {
+  const totalAttempts = retries + 1;
+  let lastReason = "알 수 없는 오류";
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const text = await DISPATCH[provider](system, user, maxTokens, model, controller.signal);
+
+      if (!text || !text.trim()) {
+        lastReason = "응답 본문이 비어있음";
+        console.error(
+          `[callAI] provider=${provider} attempt=${attempt}/${totalAttempts} reason=${lastReason}`,
+        );
+        if (attempt < totalAttempts) {
+          await sleep(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
+          continue;
+        }
+        throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+      }
+
+      if (validate && !validate(text)) {
+        lastReason = "validate 검증 실패";
+        console.error(
+          `[callAI] provider=${provider} attempt=${attempt}/${totalAttempts} reason=${lastReason}`,
+        );
+        if (attempt < totalAttempts) {
+          await sleep(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
+          continue;
+        }
+        throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+      }
+
+      return text;
+    } catch (err) {
+      // 위에서 명시적으로 던진 최종 실패 Error는 그대로 위로 전파.
+      if (err instanceof Error && err.message.startsWith("[callAI]")) {
+        throw err;
+      }
+
+      const status = err instanceof AIProviderError ? err.status : undefined;
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      lastReason = isAbort
+        ? `타임아웃(${timeoutMs}ms) 초과`
+        : (err as Error)?.message ?? String(err);
+
+      // 재시도하지 않는 경우: 429를 제외한 HTTP 4xx.
+      const noRetry = typeof status === "number" && status >= 400 && status < 500 && status !== 429;
+
+      console.error(
+        `[callAI] provider=${provider} attempt=${attempt}/${totalAttempts} reason=${lastReason}`,
+      );
+
+      if (noRetry || attempt >= totalAttempts) {
+        throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+      }
+
+      await sleep(RETRY_DELAYS_MS[attempt - 1] ?? RETRY_DELAYS_MS[RETRY_DELAYS_MS.length - 1]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // 이론상 도달하지 않지만 타입 안전을 위해.
+  throw new Error(`[callAI] ${provider} 최종 실패: ${lastReason}`);
+}
+
 /**
  * 통합 호출. provider 미지정 시 env의 AI_PROVIDER 사용, 실패하면 AI_FALLBACK_PROVIDER로 1회 재시도.
  * 반환값은 순수 텍스트(보통 JSON 문자열) — 파싱은 호출하는 route에서.
+ * options 없이 호출하면 재시도(기본 2회)와 타임아웃(기본 60000ms)만 적용되고 기존 동작·반환값은 동일하다.
  */
 export async function callAI(opts: CallAIOptions): Promise<string> {
   const { system, user, maxTokens = 4000 } = opts;
+  const retries = opts.retries ?? 2;
+  const timeoutMs = opts.timeoutMs ?? 60000;
+  const validate = opts.validate;
+
   const primary = opts.provider ?? DEFAULTS.primary;
   const primaryModel = opts.model ?? DEFAULTS.models[primary];
   console.log(`[AI] provider=${primary} model=${primaryModel}`);
 
   try {
-    return await DISPATCH[primary](system, user, maxTokens, primaryModel);
+    return await callWithRetry(primary, system, user, maxTokens, primaryModel, retries, timeoutMs, validate);
   } catch (err) {
     const fb = DEFAULTS.fallback;
     if (!fb || fb === primary) throw err;
     console.warn(`[AI] ${primary} 실패 → ${fb} 폴백:`, (err as Error).message);
-    return await DISPATCH[fb](system, user, maxTokens, DEFAULTS.models[fb]);
+    return await callWithRetry(fb, system, user, maxTokens, DEFAULTS.models[fb], retries, timeoutMs, validate);
   }
 }

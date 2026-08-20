@@ -2,9 +2,21 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
 
+// ── 오픈 리다이렉트 방지용 검증 ──────────────────────────────────────────
+// 쿼리로 전달된 redirect는 위조 가능하므로 여기서도 반드시 재검증한다.
+// "/"로 시작하지 않거나, "//"로 시작하거나, 프로토콜 문자열이 포함되면 버린다.
+function sanitizeRedirect(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/')) return null;
+  if (raw.startsWith('//')) return null;
+  if (/https?:/i.test(raw)) return null;
+  return raw;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get('code');
+  const redirect = sanitizeRedirect(searchParams.get('redirect'));
   const appUrl = process.env.NEXT_PUBLIC_APP_URL;
 
   if (code) {
@@ -74,7 +86,11 @@ export async function GET(request: NextRequest) {
         }
       }
 
-      // invite_token 없으면 /dashboard로 이동
+      // invite_token 쿠키가 없으면 redirect 쿼리(검증된 값)로, 그것도 없으면 /dashboard로 이동
+      if (redirect) {
+        return NextResponse.redirect(`${appUrl}${redirect}`);
+      }
+
       return NextResponse.redirect(`${appUrl}/dashboard`);
     }
   }

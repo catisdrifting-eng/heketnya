@@ -60,14 +60,16 @@ export default function JoinActions({ token, project }: Props) {
     try {
       if (!isLoggedIn) {
         // 미로그인: 쿠키에 token 저장 후 로그인 페이지로
+        // 쿠키가 실제로 구워진 뒤에 이동해야 콜백에서 invite_token을 읽을 수 있다.
         await fetch('/api/join/init', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
         });
-        window.location.href = `${window.location.origin}/login?redirect=/join/${token}`;
+        window.location.href = `${window.location.origin}/login?redirect=${encodeURIComponent(`/join/${token}`)}`;
         return;
       }
+
 
       // 로그인: project_members INSERT
       const supabase = createClient();
@@ -76,9 +78,10 @@ export default function JoinActions({ token, project }: Props) {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        window.location.href = `${window.location.origin}/login?redirect=/join/${token}`;
+        window.location.href = `${window.location.origin}/login?redirect=${encodeURIComponent(`/join/${token}`)}`;
         return;
       }
+
 
       const { error } = await supabase.from('project_members').insert({
         project_id: project.id,

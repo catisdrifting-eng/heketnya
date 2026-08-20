@@ -280,6 +280,7 @@ export default function NewProjectPage() {
   }
 
   async function handleSubmit() {
+    if (isSubmitting) return;
     setIsSubmitting(true);
     setIsLoading(true);
     try {
@@ -292,8 +293,11 @@ export default function NewProjectPage() {
 
       if (!user) {
         alert('로그인이 필요합니다.');
+        setIsSubmitting(false);
+        setIsLoading(false);
         return;
       }
+
 
       // ── 2. Supabase projects 테이블에 INSERT ─────────────────────────────
       const { data: project, error: insertError } = await supabase
@@ -313,6 +317,8 @@ export default function NewProjectPage() {
 
       if (insertError || !project) {
         alert('프로젝트 생성에 실패했어요.');
+        setIsSubmitting(false);
+        setIsLoading(false);
         return;
       }
 
@@ -341,6 +347,8 @@ export default function NewProjectPage() {
 
       if (!res.ok) {
         alert('AI 로드맵 생성에 실패했어요.');
+        setIsSubmitting(false);
+        setIsLoading(false);
         return;
       }
 
@@ -357,7 +365,7 @@ export default function NewProjectPage() {
         JSON.stringify({ deadline: formData.deadline, team_size: Number(formData.teamSize) }),
       );
       router.push(`/project/${projectId}/roadmap`);
-    } finally {
+    } catch {
       setIsSubmitting(false);
       setIsLoading(false);
     }

@@ -1,15 +1,34 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 
+// ── 오픈 리다이렉트 방지용 검증 ──────────────────────────────────────────
+// "/"로 시작하지 않거나, "//"로 시작하거나, 프로토콜 문자열이 포함되면 버린다.
+function sanitizeRedirect(raw: string | null): string | null {
+  if (!raw) return null;
+  if (!raw.startsWith('/')) return null;
+  if (raw.startsWith('//')) return null;
+  if (/https?:/i.test(raw)) return null;
+  return raw;
+}
+
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+  const redirect = sanitizeRedirect(searchParams.get('redirect'));
+
+  function buildRedirectTo() {
+    const base = `${window.location.origin}/auth/callback`;
+    return redirect ? `${base}?redirect=${encodeURIComponent(redirect)}` : base;
+  }
+
   async function handleGoogleLogin() {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: buildRedirectTo(),
       },
     });
   }
@@ -19,7 +38,7 @@ export default function LoginPage() {
     await supabase.auth.signInWithOAuth({
       provider: 'kakao',
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: buildRedirectTo(),
         scopes: 'profile_nickname profile_image talk_message',
       },
     });
