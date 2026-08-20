@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getValidKakaoAccessToken } from '@/lib/kakao/token';
 
 interface RequestBody {
   projectId: string;
@@ -10,13 +11,7 @@ interface DueTask {
   due_date: string; // 'YYYY-MM-DD'
 }
 
-interface KakaoTokenRow {
-  access_token: string;
-  refresh_token: string | null;
-}
-
 const KAKAO_TALK_MEMO_URL = 'https://kapi.kakao.com/v2/api/talk/memo/default/send';
-const KAKAO_TOKEN_URL = 'https://kauth.kakao.com/oauth/token';
 const KAKAO_TEXT_LIMIT = 200;
 
 // ── 마감까지 남은 일수 계산 (일 단위 자정 기준) ──────────────────────────────
@@ -91,36 +86,6 @@ async function sendKakaoMemo(accessToken: string, templateObject: object) {
   });
 }
 
-// ── 카카오 액세스 토큰 갱신 ───────────────────────────────────────────────
-async function refreshKakaoToken(refreshToken: string) {
-  const restApiKey = process.env.KAKAO_REST_API_KEY;
-  if (!restApiKey) {
-    return { ok: false as const };
-  }
-
-  const res = await fetch(KAKAO_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'refresh_token',
-      client_id: restApiKey,
-      refresh_token: refreshToken,
-    }),
-  });
-
-  if (!res.ok) {
-    return { ok: false as const };
-  }
-
-  const data = (await res.json()) as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in: number;
-  };
-
-  return { ok: true as const, data };
-}
-
 export async function POST(request: NextRequest) {
   // ── 1. 세션 확인 ──────────────────────────────────────────────────────────
   const supabase = await createClient();
@@ -146,21 +111,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── 3. DB에서 카카오 액세스 토큰 조회 ───────────────────────────────────────
-  const { data: tokenRow } = await supabase
-    .from('kakao_tokens')
-    .select('access_token, refresh_token')
-    .eq('user_id', user.id)
-    .single();
+  // ── 3. 공통 함수를 직접 호출해 카카오 액세스 토큰 확보 ───────────────────────
+  const tokenResult = await getValidKakaoAccessToken(user.id);
 
-  const kakaoToken = tokenRow as KakaoTokenRow | null;
+  if (!tokenResult.ok) {
+    if (tokenResult.reason === 'not_linked') {
+      return NextResponse.json(
+        { error: 'not_linked', message: '카카오 계정으로 로그인하면 알림을 받을 수 있어요.' },
+        { status: 404 },
+      );
+    }
 
-  if (!kakaoToken?.access_token) {
     return NextResponse.json(
-      { error: '카카오 로그인을 다시 해주세요.' },
-      { status: 400 },
+      {
+        error: 'reauth_required',
+        message: '카카오 로그인이 만료됐어요. 다시 로그인해 주세요.',
+      },
+      { status: 401 },
     );
   }
+
+  const accessToken = tokenResult.accessToken;
 
   // ── 4. 요청 body 파싱 ─────────────────────────────────────────────────────
   let body: RequestBody;
@@ -263,43 +234,15 @@ export async function POST(request: NextRequest) {
   };
 
   // ── 10. 카카오 "나에게 보내기" API 호출 ─────────────────────────────────────
-  let kakaoRes = await sendKakaoMemo(kakaoToken.access_token, templateObject);
-
-  // 401(토큰 만료)이면 refresh_token으로 갱신 후 재시도
-  if (kakaoRes.status === 401) {
-    if (!kakaoToken.refresh_token) {
-      return NextResponse.json(
-        { error: '카카오 로그인을 다시 해주세요.' },
-        { status: 401 },
-      );
-    }
-
-    const refreshed = await refreshKakaoToken(kakaoToken.refresh_token);
-
-    if (!refreshed.ok) {
-      return NextResponse.json(
-        { error: '카카오 로그인을 다시 해주세요.' },
-        { status: 401 },
-      );
-    }
-
-    const newExpiresAt = new Date(Date.now() + refreshed.data.expires_in * 1000);
-
-    await supabase.from('kakao_tokens').upsert({
-      user_id: user.id,
-      access_token: refreshed.data.access_token,
-      refresh_token: refreshed.data.refresh_token ?? kakaoToken.refresh_token,
-      expires_at: newExpiresAt.toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    kakaoRes = await sendKakaoMemo(refreshed.data.access_token, templateObject);
-  }
+  const kakaoRes = await sendKakaoMemo(accessToken, templateObject);
 
   if (!kakaoRes.ok) {
     if (kakaoRes.status === 401) {
       return NextResponse.json(
-        { error: '카카오 인증이 만료되었어요. 다시 로그인해주세요.' },
+        {
+          error: 'reauth_required',
+          message: '카카오 로그인이 만료됐어요. 다시 로그인해 주세요.',
+        },
         { status: 401 },
       );
     }

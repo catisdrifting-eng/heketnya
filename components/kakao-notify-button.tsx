@@ -58,9 +58,29 @@ export function KakaoNotifyButton({ projectId }: KakaoNotifyButtonProps) {
       const data = await res.json();
 
       if (!res.ok) {
-        setResult({ type: 'error', message: data.error ?? '알림 발송에 실패했어요.' });
+        if (data.error === 'reauth_required') {
+          setResult({
+            type: 'error',
+            message: '카카오 로그인이 만료됐어요. 다시 로그인해 주세요.',
+          });
+          return;
+        }
+
+        if (data.error === 'not_linked') {
+          setResult({
+            type: 'error',
+            message: '카카오 계정으로 로그인하면 알림을 받을 수 있어요.',
+          });
+          return;
+        }
+
+        setResult({
+          type: 'error',
+          message: data.message ?? data.error ?? '알림 발송에 실패했어요.',
+        });
         return;
       }
+
 
       if (data.notified === false) {
         setResult({ type: 'success', message: data.message ?? '발송할 일정이 없어요.' });
