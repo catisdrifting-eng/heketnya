@@ -18,6 +18,7 @@ interface Role {
 interface DashboardTask {
   id: string;
   title: string;
+  description: string | null;
   status: TaskStatus;
   assignee_id: string | null;
   due_date: string | null;
@@ -137,6 +138,21 @@ export default function ProjectDashboardPage() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [assignError, setAssignError] = useState<string | null>(null);
 
+  // ── 마감일 변경 상태 ──────────────────────────────────────────────────────
+  const [editingDueDateId, setEditingDueDateId] = useState<string | null>(null);
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
+
+  // ── 설명 펼치기 상태 ──────────────────────────────────────────────────────
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+
+  // ── 제목·설명 인라인 수정 상태 ────────────────────────────────────────────
+  const [editingBasicId, setEditingBasicId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [isSavingBasic, setIsSavingBasic] = useState(false);
+  const [basicEditError, setBasicEditError] = useState<string | null>(null);
+
+
   // ── 데이터 로드 (초기 로드 + 재조회 공용) ─────────────────────────────────
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -147,7 +163,7 @@ export default function ProjectDashboardPage() {
     const [tasksRes, membersRes, projectRes] = await Promise.all([
       supabase
         .from('tasks')
-        .select('id, title, status, assignee_id, due_date, suggested_role, sort_order, deleted_at')
+        .select('id, title, description, status, assignee_id, due_date, suggested_role, sort_order, deleted_at')
         .eq('project_id', id)
         .order('sort_order', { ascending: true }),
       supabase
@@ -329,6 +345,105 @@ export default function ProjectDashboardPage() {
     },
     [load],
   );
+
+  // ── 마감일 변경 (RPC: update_task_basic) ─────────────────────────────────
+  const handleDueDateChange = useCallback(
+    async (task: DashboardTask, newDueDate: string) => {
+      const normalized = newDueDate === '' ? null : newDueDate;
+      const previousDueDate = task.due_date;
+
+      // 낙관적 업데이트
+      setTasks((prev) =>
+        prev.map((t) => (t.id === task.id ? { ...t, due_date: normalized } : t)),
+      );
+      setDueDateError(null);
+
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.rpc('update_task_basic', {
+          p_task_id: task.id,
+          p_title: task.title,
+          p_description: task.description,
+          p_due_date: normalized,
+        });
+
+        if (error) {
+          setTasks((prev) =>
+            prev.map((t) =>
+              t.id === task.id ? { ...t, due_date: previousDueDate } : t,
+            ),
+          );
+          setDueDateError(`'${task.title}' 마감일 변경에 실패했어요. 권한이 없을 수 있어요.`);
+          return;
+        }
+
+        setEditingDueDateId(null);
+        await load();
+      } catch {
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === task.id ? { ...t, due_date: previousDueDate } : t,
+          ),
+        );
+        setDueDateError(`'${task.title}' 마감일 변경에 실패했어요. 권한이 없을 수 있어요.`);
+      }
+    },
+    [load],
+  );
+
+  // ── 제목·설명 인라인 수정 시작/취소 ───────────────────────────────────────
+  const handleStartEditBasic = useCallback((task: DashboardTask) => {
+    setEditingBasicId(task.id);
+    setEditTitle(task.title);
+    setEditDescription(task.description ?? '');
+    setBasicEditError(null);
+  }, []);
+
+  const handleCancelEditBasic = useCallback(() => {
+    setEditingBasicId(null);
+    setEditTitle('');
+    setEditDescription('');
+    setBasicEditError(null);
+  }, []);
+
+  // ── 제목·설명 저장 (RPC: update_task_basic) ──────────────────────────────
+  const handleSaveBasic = useCallback(
+    async (task: DashboardTask) => {
+      const title = editTitle.trim();
+      if (!title || isSavingBasic) return;
+
+      setIsSavingBasic(true);
+      setBasicEditError(null);
+
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.rpc('update_task_basic', {
+          p_task_id: task.id,
+          p_title: title,
+          p_description: editDescription.trim() || null,
+          p_due_date: task.due_date,
+        });
+
+        if (error) {
+          if (error.message?.includes('not_allowed')) {
+            setBasicEditError(`'${task.title}' 수정 권한이 없어요.`);
+          } else {
+            setBasicEditError(`'${task.title}' 수정에 실패했어요.`);
+          }
+          return;
+        }
+
+        setEditingBasicId(null);
+        setEditTitle('');
+        setEditDescription('');
+        await load();
+      } finally {
+        setIsSavingBasic(false);
+      }
+    },
+    [editTitle, editDescription, isSavingBasic, load],
+  );
+
 
   // ── Realtime 구독 ─────────────────────────────────────────────────────────
 
@@ -553,6 +668,18 @@ export default function ProjectDashboardPage() {
           <p className="text-xs text-red-500">{assignError}</p>
         )}
 
+        {/* 마감일 변경 에러 메시지 (섹션 상단) */}
+        {dueDateError && (
+          <p className="text-xs text-red-500">{dueDateError}</p>
+        )}
+
+        {/* 제목·설명 수정 에러 메시지 (섹션 상단) */}
+        {basicEditError && (
+          <p className="text-xs text-red-500">{basicEditError}</p>
+        )}
+
+
+
 
         {/* 태스크 추가 폼 */}
         <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
@@ -591,8 +718,25 @@ export default function ProjectDashboardPage() {
               {isAdding ? '추가 중...' : '추가'}
             </button>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value)}
+              placeholder="역할 (선택)"
+              className="flex-1 min-w-[120px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+            />
+            <textarea
+              rows={2}
+              value={newDescription}
+              onChange={(e) => setNewDescription(e.target.value)}
+              placeholder="설명 (선택)"
+              className="flex-[2] min-w-[200px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition resize-none"
+            />
+          </div>
           {addError && <p className="text-xs text-red-500">{addError}</p>}
         </div>
+
 
         {totalCount === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-16 text-center">
@@ -624,11 +768,17 @@ export default function ProjectDashboardPage() {
                     {group.map((task) => (
                       <div
                         key={task.id}
-                        className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3"
+                        className="flex flex-col rounded-xl border border-gray-100 bg-white px-4 py-3"
                       >
+                        <div className="flex items-center gap-3">
                         {/* 제목 */}
                         <span
-                          className={`flex-1 min-w-0 text-sm font-medium truncate ${
+                          onClick={() =>
+                            setExpandedTaskId((prev) =>
+                              prev === task.id ? null : task.id,
+                            )
+                          }
+                          className={`flex-1 min-w-0 cursor-pointer text-sm font-medium truncate ${
                             task.status === 'completed'
                               ? 'line-through text-gray-400'
                               : 'text-gray-900'
@@ -638,7 +788,10 @@ export default function ProjectDashboardPage() {
                         </span>
 
                         {/* 담당자 */}
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div
+                          className="flex items-center gap-1.5 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <InitialAvatar
                             name={getMemberName(task.assignee_id)}
                             size="sm"
@@ -684,6 +837,7 @@ export default function ProjectDashboardPage() {
                               <select
                                 value={task.assignee_id ?? ''}
                                 disabled={disabled}
+                                onClick={(e) => e.stopPropagation()}
                                 onChange={(e) =>
                                   handleAssigneeChange(task, e.target.value)
                                 }
@@ -701,14 +855,35 @@ export default function ProjectDashboardPage() {
 
 
                         {/* 마감일 */}
-                        {task.due_date && (
-                          <span className="text-xs text-gray-400 shrink-0">
-                            {new Date(task.due_date).toLocaleDateString('ko-KR', {
-                              month: 'short',
-                              day: 'numeric',
-                            })}
-                          </span>
-                        )}
+                        <div
+                          className="shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {editingDueDateId === task.id ? (
+                            <input
+                              type="date"
+                              autoFocus
+                              defaultValue={task.due_date ?? ''}
+                              onChange={(e) =>
+                                handleDueDateChange(task, e.target.value)
+                              }
+                              onBlur={() => setEditingDueDateId(null)}
+                              className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+                            />
+                          ) : (
+                            <span
+                              onClick={() => setEditingDueDateId(task.id)}
+                              className="cursor-pointer text-xs text-gray-400 hover:text-gray-600 transition"
+                            >
+                              {task.due_date
+                                ? new Date(task.due_date).toLocaleDateString('ko-KR', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })
+                                : '마감일 없음'}
+                            </span>
+                          )}
+                        </div>
 
                         {/* 역할 배지 */}
                         {task.suggested_role && (
@@ -721,13 +896,17 @@ export default function ProjectDashboardPage() {
 
                         {/* 상태 배지 */}
                         <span
+                          onClick={(e) => e.stopPropagation()}
                           className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_CONFIG[task.status].className}`}
                         >
                           {STATUS_CONFIG[task.status].label}
                         </span>
 
                         {/* 삭제 버튼 / 확인 */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div
+                          className="flex items-center gap-2 shrink-0"
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           {confirmingDeleteId === task.id ? (
                             <>
                               <button
@@ -751,12 +930,76 @@ export default function ProjectDashboardPage() {
                             <button
                               type="button"
                               onClick={() => setConfirmingDeleteId(task.id)}
-                              className="text-xs text-gray-300 hover:text-red-500 transition"
+                              className="text-xs text-gray-400 hover:text-red-500 transition"
                             >
                               삭제
                             </button>
                           )}
                         </div>
+                        </div>
+
+                        {/* 설명 펼침 */}
+                        {expandedTaskId === task.id && (
+                          <div
+                            className="mt-2 border-t border-gray-100 pt-2"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {editingBasicId === task.id ? (
+                              <div className="flex flex-col gap-2">
+                                <input
+                                  type="text"
+                                  value={editTitle}
+                                  onChange={(e) => setEditTitle(e.target.value)}
+                                  placeholder="제목"
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+                                />
+                                <textarea
+                                  rows={3}
+                                  value={editDescription}
+                                  onChange={(e) => setEditDescription(e.target.value)}
+                                  placeholder="설명 (선택)"
+                                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition resize-none"
+                                />
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveBasic(task)}
+                                    disabled={!editTitle.trim() || isSavingBasic}
+                                    className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {isSavingBasic ? '저장 중...' : '저장'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditBasic}
+                                    disabled={isSavingBasic}
+                                    className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-40 transition"
+                                  >
+                                    취소
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col gap-2">
+                                {task.description ? (
+                                  <p className="text-xs text-gray-600 whitespace-pre-wrap">
+                                    {task.description}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-gray-400">설명이 없어요.</p>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditBasic(task)}
+                                  className="self-start text-xs font-medium text-gray-500 hover:text-gray-700 transition"
+                                >
+                                  수정
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                       </div>
                     ))}
                   </div>
