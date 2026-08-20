@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
@@ -22,7 +22,9 @@ interface DashboardTask {
   assignee_id: string | null;
   due_date: string | null;
   suggested_role: string | null;
+  sort_order: number | null;
 }
+
 
 interface TeamMember {
   user_id: string;
@@ -106,48 +108,125 @@ export default function ProjectDashboardPage() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ── 초기 데이터 로드 ──────────────────────────────────────────────────────
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
+  // ── 태스크 추가 폼 상태 ───────────────────────────────────────────────────
+  const [newTitle, setNewTitle] = useState('');
+  const [newAssigneeId, setNewAssigneeId] = useState<string>('');
+  const [newDueDate, setNewDueDate] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
 
-      const [tasksRes, membersRes, projectRes] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('id, title, status, assignee_id, due_date, suggested_role')
-          .eq('project_id', id)
-          .order('sort_order', { ascending: true }),
-        supabase
-          .from('project_members')
-          .select('user_id, users(id, name, email, avatar_url)')
-          .eq('project_id', id),
-        supabase
-          .from('projects')
-          .select('custom_roles')
-          .eq('id', id)
-          .single(),
-      ]);
+  // ── 태스크 삭제 상태 ──────────────────────────────────────────────────────
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-      if (tasksRes.data) setTasks(tasksRes.data as DashboardTask[]);
-      if (projectRes.data?.custom_roles) {
-        setRoles(projectRes.data.custom_roles as Role[]);
-      }
+  // ── 데이터 로드 (초기 로드 + 재조회 공용) ─────────────────────────────────
+  const load = useCallback(async () => {
+    const supabase = createClient();
 
-      if (membersRes.data) {
-        const parsed: TeamMember[] = membersRes.data.map((row: any) => ({
-          user_id: row.user_id,
-          name: row.users?.name ?? row.users?.email ?? '알 수 없음',
-          email: row.users?.email ?? '',
-          avatar_url: row.users?.avatar_url ?? null,
-        }));
-        setMembers(parsed);
-      }
+    const [tasksRes, membersRes, projectRes] = await Promise.all([
+      supabase
+        .from('tasks')
+        .select('id, title, status, assignee_id, due_date, suggested_role, sort_order')
+        .eq('project_id', id)
+        .order('sort_order', { ascending: true }),
+      supabase
+        .from('project_members')
+        .select('user_id, users(id, name, email, avatar_url)')
+        .eq('project_id', id),
+      supabase
+        .from('projects')
+        .select('custom_roles')
+        .eq('id', id)
+        .single(),
+    ]);
 
-      setIsLoading(false);
+    if (tasksRes.data) setTasks(tasksRes.data as DashboardTask[]);
+    if (projectRes.data?.custom_roles) {
+      setRoles(projectRes.data.custom_roles as Role[]);
     }
 
-    load();
+    if (membersRes.data) {
+      const parsed: TeamMember[] = membersRes.data.map((row: any) => ({
+        user_id: row.user_id,
+        name: row.users?.name ?? row.users?.email ?? '알 수 없음',
+        email: row.users?.email ?? '',
+        avatar_url: row.users?.avatar_url ?? null,
+      }));
+      setMembers(parsed);
+    }
+
+    setIsLoading(false);
   }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // ── 태스크 추가 ───────────────────────────────────────────────────────────
+  const handleAddTask = useCallback(async () => {
+    const title = newTitle.trim();
+    if (!title || isAdding) return;
+
+    setIsAdding(true);
+    setAddError(null);
+
+    try {
+      const supabase = createClient();
+
+      const maxSortOrder = tasks.reduce(
+        (max, t) => Math.max(max, t.sort_order ?? 0),
+        0,
+      );
+
+      const { error } = await supabase.from('tasks').insert({
+        project_id: id,
+        title,
+        assignee_id: newAssigneeId || null,
+        due_date: newDueDate || null,
+        status: 'pending',
+        sort_order: tasks.length === 0 ? 0 : maxSortOrder + 1,
+      });
+
+      if (error) {
+        setAddError('태스크 추가에 실패했어요.');
+        return;
+      }
+
+      setNewTitle('');
+      setNewAssigneeId('');
+      setNewDueDate('');
+      await load();
+    } finally {
+      setIsAdding(false);
+    }
+  }, [newTitle, newAssigneeId, newDueDate, isAdding, tasks, id, load]);
+
+  // ── 태스크 삭제 ───────────────────────────────────────────────────────────
+  const handleDeleteTask = useCallback(
+    async (taskId: string, title: string) => {
+      setDeletingId(taskId);
+      setDeleteError(null);
+
+      try {
+        const supabase = createClient();
+        const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+
+        if (error) {
+          setDeleteError(`'${title}' 삭제에 실패했어요.`);
+          setConfirmingDeleteId(null);
+          return;
+        }
+
+        setConfirmingDeleteId(null);
+        await load();
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [load],
+  );
+
 
   // ── Realtime 구독 ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -358,8 +437,54 @@ export default function ProjectDashboardPage() {
       <section className="flex flex-col gap-6">
         <h2 className="text-lg font-semibold text-gray-900">태스크 전체 목록</h2>
 
+        {/* 삭제 에러 메시지 (섹션 상단) */}
+        {deleteError && (
+          <p className="text-xs text-red-500">{deleteError}</p>
+        )}
+
+        {/* 태스크 추가 폼 */}
+        <div className="flex flex-col gap-2 rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              placeholder="새 태스크 제목"
+              className="flex-1 min-w-0 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+            />
+            <select
+              value={newAssigneeId}
+              onChange={(e) => setNewAssigneeId(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+            >
+              <option value="">미지정</option>
+              {members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>
+                  {m.name || m.email}
+                </option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={newDueDate}
+              onChange={(e) => setNewDueDate(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-gray-400 focus:ring-2 focus:ring-gray-200 transition"
+            />
+            <button
+              type="button"
+              onClick={handleAddTask}
+              disabled={!newTitle.trim() || isAdding}
+              className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isAdding ? '추가 중...' : '추가'}
+            </button>
+          </div>
+          {addError && <p className="text-xs text-red-500">{addError}</p>}
+        </div>
+
         {totalCount === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-16 text-center">
+
             <p className="text-sm font-medium text-gray-500">아직 태스크가 없어요</p>
             <p className="mt-1 text-xs text-gray-400">
               로드맵 화면에서 태스크를 생성해주세요.
@@ -436,6 +561,38 @@ export default function ProjectDashboardPage() {
                         >
                           {STATUS_CONFIG[task.status].label}
                         </span>
+
+                        {/* 삭제 버튼 / 확인 */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {confirmingDeleteId === task.id ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTask(task.id, task.title)}
+                                disabled={deletingId === task.id}
+                                className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-40 transition"
+                              >
+                                {deletingId === task.id ? '삭제 중...' : '삭제'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmingDeleteId(null)}
+                                disabled={deletingId === task.id}
+                                className="text-xs text-gray-400 hover:text-gray-600 disabled:opacity-40 transition"
+                              >
+                                취소
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingDeleteId(task.id)}
+                              className="text-xs text-gray-300 hover:text-red-500 transition"
+                            >
+                              삭제
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -448,3 +605,4 @@ export default function ProjectDashboardPage() {
     </div>
   );
 }
+
