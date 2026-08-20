@@ -450,15 +450,13 @@ export default function ChatPage() {
         className="flex-1 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-4"
       >
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center">
-            <p className="text-sm font-medium text-gray-500">
-              아직 채팅 메시지가 없어요
-            </p>
-            <p className="mt-1 text-xs text-gray-400">
-              팀원에게 첫 메시지를 보내보세요.
+          <div className="flex h-full items-center justify-center">
+            <p className="text-sm text-gray-400">
+              아직 대화가 없어요. 첫 메시지를 남겨보세요.
             </p>
           </div>
         ) : (
+
           <div className="flex flex-col gap-3">
             {messages.map((msg) => {
               const isMine = msg.user_id === currentUserId;

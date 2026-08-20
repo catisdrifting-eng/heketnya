@@ -246,13 +246,11 @@ export default function ChecklistPage() {
 
       {/* 태스크 목록 */}
       {tasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-16 text-center">
-          <p className="text-sm font-medium text-gray-500">아직 배정된 태스크가 없어요</p>
-          <p className="mt-1 text-xs text-gray-400">
-            태스크 선택 화면에서 담당할 태스크를 선택해주세요.
-          </p>
-        </div>
+        <p className="text-sm text-gray-400">
+          아직 맡은 일이 없어요. 대시보드에서 담당자를 자기 자신으로 바꾸면 여기에 나타나요.
+        </p>
       ) : (
+
         <div className="flex flex-col gap-3">
           {tasks.map((task) => (
             <TaskCard
