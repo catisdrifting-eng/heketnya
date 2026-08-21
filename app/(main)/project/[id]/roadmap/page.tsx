@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { getRoleLabel, getRoleColor } from '@/lib/roles';
+import { useActionLock } from '@/lib/use-action-lock';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -106,6 +107,7 @@ export default function RoadmapPage() {
   const [tasks, setTasks] = useState<RoadmapTask[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
+  const { run: runConfirm, pending: confirmPending } = useActionLock();
 
   // 채팅
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -175,8 +177,27 @@ export default function RoadmapPage() {
     try {
       const supabase = createClient();
 
+      // 서버/DB 수준 중복 확정 방지: deleted_at is null 인 기존 태스크가 있으면 중단
+      const { count: existingTaskCount, error: existingTaskError } =
+        await supabase
+          .from('tasks')
+          .select('id', { count: 'exact', head: true })
+          .eq('project_id', id)
+          .is('deleted_at', null);
+
+      if (existingTaskError) {
+        alert('태스크 저장에 실패했어요.');
+        return;
+      }
+
+      if ((existingTaskCount ?? 0) > 0) {
+        alert('이미 확정된 로드맵이 있어요. 기존 태스크를 지운 뒤 다시 확정해주세요.');
+        return;
+      }
+
       // a. tasks BULK INSERT
       const { error: tasksError } = await supabase.from('tasks').insert(
+
         tasks.map((t, i) => ({
           project_id: id,
           title: t.title,
@@ -328,8 +349,8 @@ export default function RoadmapPage() {
             </Button>
             <Button
               size="sm"
-              disabled={tasks.length === 0 || isConfirming}
-              onClick={handleConfirm}
+              disabled={tasks.length === 0 || isConfirming || confirmPending}
+              onClick={() => runConfirm(handleConfirm)}
               className="ml-auto"
             >
               {isConfirming ? '저장 중...' : '확정하기'}

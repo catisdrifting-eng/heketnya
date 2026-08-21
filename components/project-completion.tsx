@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { useActionLock } from '@/lib/use-action-lock';
 
 interface ProjectCompletionProps {
   projectId: string;
@@ -49,6 +50,8 @@ export function ProjectCompletion({
   const [retroError, setRetroError] = useState<string | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { run: runSetStatus, pending: setStatusPending } = useActionLock();
+  const { run: runRetrospective, pending: retroActionPending } = useActionLock();
 
   function clearLoadingInterval() {
     if (intervalRef.current) {
@@ -144,8 +147,8 @@ export function ProjectCompletion({
             <span className="text-sm text-gray-700">프로젝트를 완료할까요?</span>
             <button
               type="button"
-              onClick={() => handleSetStatus('completed')}
-              disabled={statusLoading}
+              onClick={() => runSetStatus(() => handleSetStatus('completed'))}
+              disabled={statusLoading || setStatusPending}
               className="text-sm font-medium text-gray-900 transition hover:text-black disabled:opacity-60"
             >
               완료
@@ -185,8 +188,8 @@ export function ProjectCompletion({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => handleSetStatus('active')}
-              disabled={statusLoading}
+              onClick={() => runSetStatus(() => handleSetStatus('active'))}
+              disabled={statusLoading || setStatusPending}
               className="text-xs font-medium text-gray-700 transition hover:text-gray-900 disabled:opacity-60"
             >
               되돌리기
@@ -211,8 +214,8 @@ export function ProjectCompletion({
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={handleGenerateRetrospective}
-              disabled={retroLoading}
+              onClick={() => runRetrospective(handleGenerateRetrospective)}
+              disabled={retroLoading || retroActionPending}
               className="text-sm text-gray-500 transition hover:text-gray-700 disabled:opacity-60"
             >
               {retroLoading ? `${LOADING_MESSAGES[retroLoadingIndex]}...` : '회고 만들기'}
@@ -226,8 +229,8 @@ export function ProjectCompletion({
           <div className="relative flex flex-col gap-3 rounded-xl border border-gray-100 bg-white p-4">
             <button
               type="button"
-              onClick={handleGenerateRetrospective}
-              disabled={retroLoading}
+              onClick={() => runRetrospective(handleGenerateRetrospective)}
+              disabled={retroLoading || retroActionPending}
               className="absolute right-3 top-3 text-xs text-gray-400 transition hover:text-gray-600 disabled:opacity-60"
             >
               {retroLoading ? `${LOADING_MESSAGES[retroLoadingIndex]}...` : '다시 만들기'}

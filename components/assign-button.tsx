@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useActionLock } from '@/lib/use-action-lock';
 
 interface AssignButtonProps {
   projectId: string;
@@ -27,6 +28,7 @@ export default function AssignButton({ projectId }: AssignButtonProps) {
   const messageTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const { run: runAssign, pending: assignPending } = useActionLock();
 
   function clearTimers() {
     if (messageTimerRef.current) {
@@ -103,8 +105,8 @@ export default function AssignButton({ projectId }: AssignButtonProps) {
     <div className="flex flex-col gap-2">
       <button
         type="button"
-        onClick={handleAssign}
-        disabled={isLoading}
+        onClick={() => runAssign(handleAssign)}
+        disabled={isLoading || assignPending}
         className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {isLoading ? (

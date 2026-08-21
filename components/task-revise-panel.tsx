@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import { useActionLock } from '@/lib/use-action-lock';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
 
@@ -66,6 +67,8 @@ export function TaskRevisePanel({ projectId, tasks, onApplied }: TaskRevisePanel
   } | null>(null);
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const { run: runRequest, pending: requestPending } = useActionLock();
+  const { run: runApply, pending: applyPending } = useActionLock();
 
   // ── 로딩 문구 순환 (5초 간격, 마지막에서 멈춤) ────────────────────────────
   useEffect(() => {
@@ -283,8 +286,8 @@ export function TaskRevisePanel({ projectId, tasks, onApplied }: TaskRevisePanel
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={handleRequest}
-              disabled={!instruction.trim() || isRequesting}
+              onClick={() => runRequest(handleRequest)}
+              disabled={!instruction.trim() || isRequesting || requestPending}
               className="shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               요청
@@ -407,8 +410,8 @@ export function TaskRevisePanel({ projectId, tasks, onApplied }: TaskRevisePanel
               {proposals.length > 0 && (
                 <button
                   type="button"
-                  onClick={handleApply}
-                  disabled={checkedCount === 0 || isApplying}
+                  onClick={() => runApply(handleApply)}
+                  disabled={checkedCount === 0 || isApplying || applyPending}
                   className="self-start rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isApplying ? '적용 중...' : `선택한 ${checkedCount}건 적용`}

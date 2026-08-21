@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { useActionLock } from '@/lib/use-action-lock';
 
 interface ProjectInfo {
   id: string;
@@ -22,6 +23,7 @@ export default function JoinActions({ token, project }: Props) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
   const [isJoining, setIsJoining] = useState(false);
+  const { run: runJoin, pending: joinPending } = useActionLock();
 
   // 로그인 여부 확인 + 이미 멤버인지 확인
   useEffect(() => {
@@ -145,7 +147,7 @@ export default function JoinActions({ token, project }: Props) {
       </div>
 
       {/* 참여 버튼 */}
-      <Button size="lg" className="w-full" disabled={isJoining} onClick={handleJoin}>
+      <Button size="lg" className="w-full" disabled={isJoining || joinPending} onClick={() => runJoin(handleJoin)}>
         {isJoining
           ? '참여 중...'
           : isLoggedIn
